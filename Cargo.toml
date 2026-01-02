@@ -1,5 +1,5 @@
 [package]
-name = "wm"
+name = "working-memory"
 version = "0.1.2"
 edition = "2024"
 description = "Working memory for AI coding assistants"
@@ -7,6 +7,10 @@ license = "LicenseRef-Proprietary"
 repository = "https://github.com/cloud-atlas-ai/wm"
 keywords = ["ai", "memory", "claude", "context"]
 categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "wm"
+path = "src/main.rs"
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
