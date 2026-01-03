@@ -18,9 +18,21 @@ use std::process::{Command, Stdio};
 const CARRYOVER_WINDOW_MINUTES: i64 = 5;
 
 /// Run wm extract
+/// AIDEV-NOTE: Returns Ok() instead of Err when not initialized. This is intentional:
+/// extract/compile can be triggered automatically by hooks (superego calls `wm extract &`),
+/// so they must not spam error logs in projects without .wm/. User-invoked commands like
+/// show/status still return Err to inform the user. See also: compile::run().
 pub fn run(transcript_path: Option<String>, session_id: Option<String>) -> Result<(), String> {
+    // AIDEV-NOTE: Deprecation warning - extract is being replaced by distill command
+    // which uses batch processing with two passes (extraction then categorization).
+    // See epic yz-90jh for the full distillation rewrite plan.
+    eprintln!("⚠️  DEPRECATED: 'wm extract' will be replaced by 'wm distill' in a future version.");
+    eprintln!("   The new distill command processes all sessions in batch with improved categorization.");
+    eprintln!();
+
     if !state::is_initialized() {
-        return Err("Not initialized. Run 'wm init' first.".to_string());
+        eprintln!("Not initialized. Run 'wm init' first.");
+        return Ok(());
     }
 
     // Check if extract is paused
