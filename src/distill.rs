@@ -10,13 +10,13 @@
 //! Each session's extraction is cached to support incremental runs (--force overrides).
 //! The raw extractions are written to .wm/distill/raw_extractions.md for Pass 2.
 
+use crate::llm;
 use crate::session::{self, SessionInfo};
 use crate::state;
 use crate::transcript::{format_context, read_transcript};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
 
 /// Directory for distillation output
 const DISTILL_DIR: &str = "distill";
@@ -262,10 +262,6 @@ struct ExtractionResult {
 
 /// Call LLM to extract tacit knowledge from transcript
 fn call_extraction_llm(transcript: &str) -> Result<ExtractionResult, String> {
-    // Prevent recursion
-    // SAFETY: Single-threaded, standard pattern for preventing recursive hooks
-    unsafe { std::env::set_var("WM_DISABLED", "1") };
-
     // AIDEV-NOTE: Distill extraction prompt differs from per-turn extract:
     // - We're looking at a complete session, not incremental updates
     // - Focus on extracting standalone insights that can be categorized later
@@ -301,81 +297,13 @@ Most sessions have little or no tacit knowledge. That's normal."#;
 
     let message = format!("TRANSCRIPT:\n{}\n\nOUTPUT:", transcript);
 
-    let mut cmd = Command::new("claude");
-    cmd.arg("-p")
-        .arg("--output-format")
-        .arg("json")
-        .arg("--no-session-persistence")
-        .arg("--system-prompt")
-        .arg(system_prompt)
-        .arg(&message)
-        .env("SUPEREGO_DISABLED", "1")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .stdin(Stdio::null());
+    let result_str = llm::call_claude(system_prompt, &message)?;
+    let response = llm::parse_marker_response(&result_str, "HAS_KNOWLEDGE");
 
-    let child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn claude CLI: {}", e))?;
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for claude CLI: {}", e))?;
-
-    // Re-enable WM
-    // SAFETY: Single-threaded, restoring previous state
-    unsafe { std::env::remove_var("WM_DISABLED") };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Claude CLI failed: {}", stderr));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_extraction_response(&stdout)
-}
-
-/// Parse Claude CLI response
-fn parse_extraction_response(response: &str) -> Result<ExtractionResult, String> {
-    let cli_response: serde_json::Value = serde_json::from_str(response)
-        .map_err(|e| format!("Failed to parse Claude CLI response: {}", e))?;
-
-    let result_str = cli_response
-        .get("result")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Claude CLI response missing 'result' field".to_string())?;
-
-    Ok(parse_knowledge_response(result_str))
-}
-
-/// Parse HAS_KNOWLEDGE: YES|NO format
-fn parse_knowledge_response(result_str: &str) -> ExtractionResult {
-    let lines: Vec<&str> = result_str.lines().collect();
-
-    for (i, line) in lines.iter().enumerate() {
-        let stripped = line.trim().trim_start_matches(['#', '>', '*']).trim();
-
-        if let Some(value) = stripped.strip_prefix("HAS_KNOWLEDGE:") {
-            let value = value.trim().to_uppercase();
-            if value == "YES" || value == "TRUE" {
-                let content = lines[i + 1..].join("\n").trim().to_string();
-                return ExtractionResult {
-                    has_knowledge: true,
-                    content,
-                };
-            }
-            return ExtractionResult {
-                has_knowledge: false,
-                content: String::new(),
-            };
-        }
-    }
-
-    // Fallback: no marker found
-    ExtractionResult {
-        has_knowledge: false,
-        content: String::new(),
-    }
+    Ok(ExtractionResult {
+        has_knowledge: response.is_positive,
+        content: response.content,
+    })
 }
 
 /// Accumulate extractions into a single markdown document

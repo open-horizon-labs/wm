@@ -7,11 +7,11 @@
 //! which broke on transcript rotation/compaction. Now uses proper JSONL parsing
 //! and session-id filtering like superego does.
 
+use crate::llm;
 use crate::state;
 use crate::transcript::{format_context, get_messages_in_window, get_messages_since, read_transcript};
 use chrono::{DateTime, Duration, Utc};
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 /// Carryover window: how many minutes before last_extracted to re-read for context
 /// AIDEV-NOTE: Matches sg's default. Provides continuity without unbounded context growth.
@@ -298,10 +298,6 @@ fn call_generative_extraction(
     new_transcript: &str,
     carryover_context: Option<&str>,
 ) -> Result<ExtractionResult, String> {
-    // Prevent recursion
-    // SAFETY: Single-threaded, standard pattern for preventing recursive hooks
-    unsafe { std::env::set_var("WM_DISABLED", "1") };
-
     // AIDEV-NOTE: wm is the RECORDER role - captures learning without authority to enforce.
     // Learning stays "plastic" here until promoted to OH as guardrails/metis.
     // Focus on RATIONALE (why), not just decisions (what).
@@ -362,108 +358,12 @@ HAS_KNOWLEDGE: NO"#;
     state::log("extract", &format!("System prompt length: {} bytes", system_prompt.len()));
     state::log("extract", &format!("Message preview (first 500): {}", &message.chars().take(500).collect::<String>()));
 
-    // AIDEV-NOTE: Match sg's calling pattern exactly:
-    // - Pass message as argument (not stdin)
-    // - Use --no-session-persistence to prevent session bleed
-    // - stdin(Stdio::null()) explicitly
-    let mut cmd = Command::new("claude");
-    cmd.arg("-p")
-        .arg("--output-format")
-        .arg("json")
-        .arg("--no-session-persistence")
-        .arg("--system-prompt")
-        .arg(system_prompt)
-        .arg(&message)
-        .env("SUPEREGO_DISABLED", "1") // Prevent sg → wm → claude → sg loop
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .stdin(Stdio::null());
+    // Use shared LLM utilities
+    let result_str = llm::call_claude(system_prompt, &message)?;
+    let response = llm::parse_marker_response(&result_str, "HAS_KNOWLEDGE");
 
-    let child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn claude CLI: {}", e))?;
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for claude CLI: {}", e))?;
-
-    // Re-enable WM
-    // SAFETY: Single-threaded, restoring previous state
-    unsafe { std::env::remove_var("WM_DISABLED") };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "Claude CLI failed (exit {:?}):\nstderr: {}\nstdout: {}",
-            output.status.code(),
-            stderr,
-            stdout
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Extract and parse result from Claude CLI JSON response
-    parse_extraction_response(&stdout)
-}
-
-/// Strip markdown prefixes from a line (matches sg's strip_markdown_prefix exactly)
-fn strip_markdown_prefix(line: &str) -> &str {
-    line.trim().trim_start_matches(['#', '>', '*']).trim()
-}
-
-/// Parse HAS_KNOWLEDGE: YES|NO format with lenient matching (like sg's parse_decision_response)
-/// AIDEV-NOTE: This is the robust pattern from sg - search for marker, strip markdown prefixes,
-/// extract content after the marker line. Much more reliable than JSON parsing.
-fn parse_knowledge_response(result_str: &str) -> ExtractionResult {
-    let lines: Vec<&str> = result_str.lines().collect();
-
-    for (i, line) in lines.iter().enumerate() {
-        let stripped = strip_markdown_prefix(line);
-
-        if let Some(value) = stripped.strip_prefix("HAS_KNOWLEDGE:") {
-            let value = value.trim().to_uppercase();
-            if value == "YES" || value == "TRUE" {
-                // Content is everything after this line
-                let content = lines[i + 1..].join("\n").trim().to_string();
-                return ExtractionResult {
-                    has_knowledge: true,
-                    content,
-                };
-            }
-            // NO or FALSE - no knowledge to extract
-            return ExtractionResult {
-                has_knowledge: false,
-                content: String::new(),
-            };
-        }
-    }
-
-    // Fallback: no marker found, assume no knowledge
-    state::log(
-        "extract",
-        "No HAS_KNOWLEDGE marker found in response, treating as no knowledge",
-    );
-    ExtractionResult {
-        has_knowledge: false,
-        content: String::new(),
-    }
-}
-
-/// Parse Claude CLI response and extract the ExtractionResult
-/// AIDEV-NOTE: Claude CLI wraps response in {"result": "..."}. We extract that string,
-/// then parse using text-based HAS_KNOWLEDGE markers (not JSON).
-fn parse_extraction_response(response: &str) -> Result<ExtractionResult, String> {
-    // First, parse the Claude CLI wrapper
-    let cli_response: serde_json::Value = serde_json::from_str(response)
-        .map_err(|e| format!("Failed to parse Claude CLI response: {}", e))?;
-
-    let result_str = cli_response
-        .get("result")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Claude CLI response missing 'result' field".to_string())?;
-
-    // Parse using text-based markers (like sg does)
-    Ok(parse_knowledge_response(result_str))
+    Ok(ExtractionResult {
+        has_knowledge: response.is_positive,
+        content: response.content,
+    })
 }
