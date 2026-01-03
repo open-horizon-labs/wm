@@ -17,25 +17,32 @@ pub struct MarkerResponse {
     pub content: String,
 }
 
-/// Drop guard that removes an environment variable when dropped
+/// Drop guard that restores an environment variable when dropped
 /// AIDEV-NOTE: Ensures env vars are restored even if the LLM call panics or
 /// if future code changes add early returns via `?`. More robust than manual cleanup.
+/// Preserves original value if the env var was already set.
 struct EnvGuard {
     var_name: &'static str,
+    original_value: Option<String>,
 }
 
 impl EnvGuard {
     fn new(var_name: &'static str, value: &str) -> Self {
+        // Capture original value before overwriting
+        let original_value = std::env::var(var_name).ok();
         // SAFETY: Single-threaded, setting recursion prevention flag
         unsafe { std::env::set_var(var_name, value) };
-        Self { var_name }
+        Self { var_name, original_value }
     }
 }
 
 impl Drop for EnvGuard {
     fn drop(&mut self) {
         // SAFETY: Single-threaded, restoring previous state
-        unsafe { std::env::remove_var(self.var_name) };
+        match &self.original_value {
+            Some(val) => unsafe { std::env::set_var(self.var_name, val) },
+            None => unsafe { std::env::remove_var(self.var_name) },
+        }
     }
 }
 
