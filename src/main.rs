@@ -5,6 +5,7 @@ mod compile;
 mod compress;
 mod extract;
 mod init;
+mod session;
 mod show;
 mod state;
 mod transcript;

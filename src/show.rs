@@ -1,5 +1,6 @@
 //! Display commands for state and working set
 
+use crate::session;
 use crate::state;
 
 /// Run wm show <what> [--session-id ID]
@@ -73,41 +74,46 @@ fn show_working(session_id: Option<&str>) -> Result<(), String> {
 }
 
 fn show_sessions() -> Result<(), String> {
-    if !state::is_initialized() {
-        return Err("Not initialized. Run 'wm init' first.".to_string());
-    }
-
-    let sessions_dir = state::wm_path("sessions");
-    if !sessions_dir.exists() {
-        println!("_No sessions yet._");
-        return Ok(());
-    }
-
-    let entries = std::fs::read_dir(&sessions_dir)
-        .map_err(|e| format!("Failed to read sessions directory: {}", e))?;
-
-    let mut sessions: Vec<_> = entries
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().is_dir())
-        .map(|e| e.file_name().to_string_lossy().to_string())
-        .collect();
+    let project_path = session::current_project_path();
+    let sessions = session::discover_sessions(&project_path)?;
 
     if sessions.is_empty() {
-        println!("_No sessions yet._");
+        println!("_No Claude sessions found for this project._");
         return Ok(());
     }
 
-    sessions.sort();
-    println!("# Sessions ({})", sessions.len());
+    println!("# Claude Sessions ({})", sessions.len());
     println!();
-    for session in sessions {
-        let working_set = state::session_dir(&session).join("working_set.md");
-        let has_working = working_set.exists();
-        let marker = if has_working { "●" } else { "○" };
-        println!("{} {}", marker, session);
+
+    for s in &sessions {
+        // Check if we have local state for this session
+        let has_local_state = state::session_dir(&s.session_id)
+            .join("extraction_state.json")
+            .exists();
+        let marker = if has_local_state { "●" } else { "○" };
+
+        // Format size in human-readable form
+        let size = format_size(s.size_bytes);
+
+        // Format timestamp
+        let time = s.modified_at.format("%Y-%m-%d %H:%M");
+
+        println!("{} {} ({}, {})", marker, s.session_id, size, time);
     }
+
     println!();
-    println!("● = has working_set.md, ○ = no working set");
+    println!("● = has wm state, ○ = not yet processed");
 
     Ok(())
+}
+
+/// Format bytes in human-readable form
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
 }
