@@ -3,6 +3,7 @@ use std::process::ExitCode;
 
 mod compile;
 mod compress;
+mod distill;
 mod extract;
 mod init;
 mod session;
@@ -45,6 +46,25 @@ enum Commands {
 
     /// Compress state.md by synthesizing to higher-level abstractions
     Compress,
+
+    /// Batch extract knowledge from all sessions (replaces per-turn extract)
+    Distill {
+        /// Preview what would be extracted without writing
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Force re-extraction even for already-processed sessions
+        #[arg(long)]
+        force: bool,
+
+        /// Push distilled knowledge to Open Horizons via MCP
+        #[arg(long)]
+        push_to_oh: bool,
+
+        /// OH context ID to push to (required if --push-to-oh is set)
+        #[arg(long)]
+        context_id: Option<String>,
+    },
 
     /// Display state, working set, or sessions
     Show {
@@ -108,6 +128,17 @@ fn main() -> ExitCode {
         } => extract::run(transcript, session_id),
         Commands::Compile { intent } => compile::run(intent),
         Commands::Compress => compress::run(),
+        Commands::Distill {
+            dry_run,
+            force,
+            push_to_oh,
+            context_id,
+        } => distill::run(distill::DistillOptions {
+            dry_run,
+            force,
+            push_to_oh,
+            context_id,
+        }),
         Commands::Show { what, session_id } => show::run(&what, session_id.as_deref()),
         Commands::Pause { operation } => run_pause(operation),
         Commands::Resume { operation } => run_resume(operation),
