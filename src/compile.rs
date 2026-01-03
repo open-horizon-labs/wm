@@ -8,9 +8,14 @@ use crate::types::HookResponse;
 use std::process::{Command, Stdio};
 
 /// Run wm compile with optional intent
+/// AIDEV-NOTE: Returns Ok() instead of Err when not initialized. This is intentional:
+/// extract/compile can be triggered automatically by hooks, so they must not spam error
+/// logs in projects without .wm/. User-invoked commands like show/status still return
+/// Err to inform the user. See also: extract::run().
 pub fn run(intent: Option<String>) -> Result<(), String> {
     if !state::is_initialized() {
-        return Err("Not initialized. Run 'wm init' first.".to_string());
+        eprintln!("Not initialized. Run 'wm init' first.");
+        return Ok(());
     }
 
     // Check if compile is paused
