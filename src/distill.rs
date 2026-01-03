@@ -143,6 +143,7 @@ fn run_pass1(sessions: &[SessionInfo], force: bool) -> Result<Vec<SessionExtract
     let mut results = Vec::new();
     let mut processed = 0;
     let mut skipped = 0;
+    let mut failed = 0;
 
     for session in sessions {
         // Check if we can use cached extraction
@@ -173,6 +174,9 @@ fn run_pass1(sessions: &[SessionInfo], force: bool) -> Result<Vec<SessionExtract
             }
             Err(e) => {
                 eprintln!("    ✗ error: {}", e);
+                // Log to file for later debugging
+                log_extraction_error(&session.session_id, &e);
+                failed += 1;
                 // Continue with other sessions
             }
         }
@@ -181,10 +185,19 @@ fn run_pass1(sessions: &[SessionInfo], force: bool) -> Result<Vec<SessionExtract
     // Save updated cache
     save_extraction_cache(&cache)?;
 
-    println!(
-        "\nProcessed {} session(s), {} from cache",
-        processed, skipped
-    );
+    // Build summary message
+    let mut summary_parts = vec![format!("{} session(s) processed", processed)];
+    if skipped > 0 {
+        summary_parts.push(format!("{} from cache", skipped));
+    }
+    if failed > 0 {
+        summary_parts.push(format!("{} failed", failed));
+    }
+    println!("\n{}", summary_parts.join(", "));
+
+    if failed > 0 {
+        println!("See .wm/{}/errors.log for failure details", DISTILL_DIR);
+    }
 
     Ok(results)
 }
@@ -358,6 +371,33 @@ fn write_raw_extractions(content: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to write raw extractions: {}", e))?;
 
     Ok(())
+}
+
+/// Log an extraction error to the errors log file
+fn log_extraction_error(session_id: &str, error: &str) {
+    use chrono::Local;
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let distill_dir = state::wm_path(DISTILL_DIR);
+
+    // Ensure directory exists
+    if std::fs::create_dir_all(&distill_dir).is_err() {
+        return; // Silently fail - this is best-effort logging
+    }
+
+    let log_path = distill_dir.join("errors.log");
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
+    // Collapse multi-line errors to single line for parseable log format
+    let error_oneline = error.replace('\n', " | ");
+    let line = format!("[{}] Session {}: {}\n", timestamp, session_id, error_oneline);
+
+    // Append to log file, ignore errors (logging should never fail the operation)
+    let _ = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .and_then(|mut f| f.write_all(line.as_bytes()));
 }
 
 /// Print session info with status
