@@ -3,6 +3,7 @@ use std::process::ExitCode;
 
 mod compile;
 mod compress;
+mod dive;
 mod extract;
 mod init;
 mod show;
@@ -56,11 +57,32 @@ enum Commands {
         session_id: Option<String>,
     },
 
+    /// Manage Open Horizons dive pack context
+    Dive {
+        #[command(subcommand)]
+        command: DiveCommands,
+    },
+
     /// Hook entry points (called by Claude Code hooks)
     Hook {
         #[command(subcommand)]
         command: HookCommands,
     },
+}
+
+#[derive(Subcommand)]
+enum DiveCommands {
+    /// Load a dive pack from OH and write to OH_context.md
+    Load {
+        /// Dive pack ID to load
+        pack_id: String,
+    },
+
+    /// Clear the current OH context
+    Clear,
+
+    /// Show current OH context
+    Show,
 }
 
 #[derive(Subcommand)]
@@ -93,6 +115,11 @@ fn main() -> ExitCode {
         Commands::Compile { intent } => compile::run(intent),
         Commands::Compress => compress::run(),
         Commands::Show { what, session_id } => show::run(&what, session_id.as_deref()),
+        Commands::Dive { command } => match command {
+            DiveCommands::Load { pack_id } => dive::load(&pack_id),
+            DiveCommands::Clear => dive::clear(),
+            DiveCommands::Show => dive::show(),
+        },
         Commands::Hook { command } => match command {
             HookCommands::Compile { session_id } => compile::run_hook(&session_id),
             HookCommands::Extract => extract::run_hook(),
