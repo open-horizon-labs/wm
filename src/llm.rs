@@ -17,28 +17,38 @@ pub struct MarkerResponse {
     pub content: String,
 }
 
+/// Drop guard that removes an environment variable when dropped
+/// AIDEV-NOTE: Ensures env vars are restored even if the LLM call panics or
+/// if future code changes add early returns via `?`. More robust than manual cleanup.
+struct EnvGuard {
+    var_name: &'static str,
+}
+
+impl EnvGuard {
+    fn new(var_name: &'static str, value: &str) -> Self {
+        // SAFETY: Single-threaded, setting recursion prevention flag
+        unsafe { std::env::set_var(var_name, value) };
+        Self { var_name }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        // SAFETY: Single-threaded, restoring previous state
+        unsafe { std::env::remove_var(self.var_name) };
+    }
+}
+
 /// Call Claude CLI with a system prompt and message
 ///
 /// Returns the raw result string from the Claude CLI JSON response.
 /// Sets WM_DISABLED and SUPEREGO_DISABLED to prevent recursion.
 pub fn call_claude(system_prompt: &str, message: &str) -> Result<String, String> {
-    // Prevent recursion
-    // SAFETY: Single-threaded, standard pattern for preventing recursive hooks
-    unsafe {
-        std::env::set_var("WM_DISABLED", "1");
-        std::env::set_var("SUPEREGO_DISABLED", "1");
-    }
+    // Prevent recursion using drop guards - env vars are restored even on panic/early return
+    let _wm_guard = EnvGuard::new("WM_DISABLED", "1");
+    let _sg_guard = EnvGuard::new("SUPEREGO_DISABLED", "1");
 
-    let result = call_claude_inner(system_prompt, message);
-
-    // Re-enable (always runs, even on error)
-    // SAFETY: Single-threaded, restoring previous state
-    unsafe {
-        std::env::remove_var("WM_DISABLED");
-        std::env::remove_var("SUPEREGO_DISABLED");
-    }
-
-    result
+    call_claude_inner(system_prompt, message)
 }
 
 /// Inner implementation of call_claude (without env var management)
