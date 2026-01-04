@@ -76,11 +76,33 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
 
     let state_content = std::fs::read_to_string(state::wm_path("state.md")).unwrap_or_default();
 
-    // If no state, return empty response
-    if state_content.trim().is_empty() {
-        state::log("compile", "No state, returning empty");
+    // Check for dive context (curated grounding from dive-prep)
+    // Supports both dive_context.md (new) and OH_context.md (legacy)
+    let dive_context = std::fs::read_to_string(state::wm_path("dive_context.md"))
+        .or_else(|_| std::fs::read_to_string(state::wm_path("OH_context.md")))
+        .unwrap_or_default();
+    let has_dive_context = !dive_context.trim().is_empty();
+    if has_dive_context {
+        state::log("compile", &format!("Dive context loaded: {} bytes", dive_context.len()));
+    }
+
+    // If no state and no dive context, return empty response
+    if state_content.trim().is_empty() && !has_dive_context {
+        state::log("compile", "No state or dive context, returning empty");
         let response = HookResponse {
             additional_context: None,
+        };
+        let json = serde_json::to_string(&response).map_err(|e| e.to_string())?;
+        println!("{}", json);
+        return Ok(());
+    }
+
+    // If we have dive context but no state, just inject dive context directly (no LLM call needed)
+    if state_content.trim().is_empty() && has_dive_context {
+        state::log("compile", "Injecting dive context directly (no state to filter)");
+        let _ = state::write_working_set_for_session(session_id, &dive_context);
+        let response = HookResponse {
+            additional_context: Some(dive_context),
         };
         let json = serde_json::to_string(&response).map_err(|e| e.to_string())?;
         println!("{}", json);
@@ -102,15 +124,30 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
         }
     };
 
-    // Only write working_set if there's relevant content
-    if compile_result.has_relevant {
-        let _ = state::write_working_set_for_session(session_id, &compile_result.content);
+    // Combine dive context (always included if present) with filtered state
+    let final_content = if has_dive_context {
+        if compile_result.has_relevant {
+            // Both dive context and relevant state - combine them
+            format!("{}\n\n---\n\n## Working Memory\n\n{}", dive_context, compile_result.content)
+        } else {
+            // Only dive context
+            dive_context.clone()
+        }
+    } else {
+        compile_result.content.clone()
+    };
+
+    let has_content = !final_content.trim().is_empty();
+
+    // Only write working_set if there's content
+    if has_content {
+        let _ = state::write_working_set_for_session(session_id, &final_content);
     }
 
     // Output hook response
     let response = HookResponse {
-        additional_context: if compile_result.has_relevant {
-            Some(compile_result.content)
+        additional_context: if has_content {
+            Some(final_content)
         } else {
             None
         },
