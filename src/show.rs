@@ -44,8 +44,21 @@ fn show_working(session_id: Option<&str>) -> Result<(), String> {
         return Err("Not initialized. Run 'wm init' first.".to_string());
     }
 
-    // Read from session-specific path if provided, otherwise global
-    let content = match session_id {
+    let mut has_content = false;
+
+    // Read dive context if present
+    let dive_path = state::wm_path("dive_context.md");
+    if let Ok(dive_content) = std::fs::read_to_string(&dive_path) {
+        if !dive_content.trim().is_empty() {
+            println!("## Dive Context\n");
+            println!("{}", dive_content.trim());
+            println!();
+            has_content = true;
+        }
+    }
+
+    // Read working set (compiled state)
+    let working_content = match session_id {
         Some(id) => {
             let path = state::session_dir(id).join("working_set.md");
             std::fs::read_to_string(&path)
@@ -53,24 +66,25 @@ fn show_working(session_id: Option<&str>) -> Result<(), String> {
         None => state::read_working_set(),
     };
 
-    match content {
-        Ok(c) if c.trim().is_empty() => {
-            println!("_No working set compiled yet. Run 'wm compile' first._");
-            Ok(())
-        }
-        Ok(c) => {
-            println!("{}", c);
-            Ok(())
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            match session_id {
-                Some(id) => println!("_No working set for session {}. Run 'wm hook compile --session-id {}' first._", id, id),
-                None => println!("_No working set compiled yet. Run 'wm compile' first._"),
+    if let Ok(content) = working_content {
+        if !content.trim().is_empty() {
+            if has_content {
+                println!("## Compiled Knowledge\n");
             }
-            Ok(())
+            println!("{}", content.trim());
+            has_content = true;
         }
-        Err(e) => Err(format!("Failed to read working set: {}", e)),
     }
+
+    if !has_content {
+        println!("_No context loaded._");
+        println!();
+        println!("To add context:");
+        println!("  - Run /dive-prep to create a dive session");
+        println!("  - Or wait for wm extract to capture knowledge");
+    }
+
+    Ok(())
 }
 
 fn show_sessions() -> Result<(), String> {
