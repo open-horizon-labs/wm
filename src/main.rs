@@ -6,6 +6,7 @@ mod compress;
 mod distill;
 mod extract;
 mod init;
+mod llm;
 mod session;
 mod show;
 mod state;
