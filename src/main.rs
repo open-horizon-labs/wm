@@ -66,6 +66,10 @@ enum Commands {
         /// OH context ID to push to (required if --push-to-oh is set)
         #[arg(long)]
         context_id: Option<String>,
+
+        /// Filter to a specific project by name (substring match)
+        #[arg(long)]
+        project: Option<String>,
     },
 
     /// Display state, working set, or sessions
@@ -156,11 +160,13 @@ fn main() -> ExitCode {
             force,
             push_to_oh,
             context_id,
+            project,
         } => distill::run(distill::DistillOptions {
             dry_run,
             force,
             push_to_oh,
             context_id,
+            project,
         }),
         Commands::Show { what, session_id } => show::run(&what, session_id.as_deref()),
         Commands::Dive { command } => match command {
