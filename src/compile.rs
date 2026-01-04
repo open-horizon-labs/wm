@@ -54,16 +54,19 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
 
     let state_content = std::fs::read_to_string(state::wm_path("state.md")).unwrap_or_default();
 
-    // Check for OH dive pack context (curated grounding from Open Horizons)
-    let oh_context = std::fs::read_to_string(state::wm_path("OH_context.md")).unwrap_or_default();
-    let has_oh_context = !oh_context.trim().is_empty();
-    if has_oh_context {
-        state::log("compile", &format!("OH context loaded: {} bytes", oh_context.len()));
+    // Check for dive context (curated grounding from dive-prep)
+    // Supports both dive_context.md (new) and OH_context.md (legacy)
+    let dive_context = std::fs::read_to_string(state::wm_path("dive_context.md"))
+        .or_else(|_| std::fs::read_to_string(state::wm_path("OH_context.md")))
+        .unwrap_or_default();
+    let has_dive_context = !dive_context.trim().is_empty();
+    if has_dive_context {
+        state::log("compile", &format!("Dive context loaded: {} bytes", dive_context.len()));
     }
 
-    // If no state and no OH context, return empty response
-    if state_content.trim().is_empty() && !has_oh_context {
-        state::log("compile", "No state or OH context, returning empty");
+    // If no state and no dive context, return empty response
+    if state_content.trim().is_empty() && !has_dive_context {
+        state::log("compile", "No state or dive context, returning empty");
         let response = HookResponse {
             additional_context: None,
         };
@@ -72,12 +75,12 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    // If we have OH context but no state, just inject OH context directly (no LLM call needed)
-    if state_content.trim().is_empty() && has_oh_context {
-        state::log("compile", "Injecting OH context directly (no state to filter)");
-        let _ = state::write_working_set_for_session(session_id, &oh_context);
+    // If we have dive context but no state, just inject dive context directly (no LLM call needed)
+    if state_content.trim().is_empty() && has_dive_context {
+        state::log("compile", "Injecting dive context directly (no state to filter)");
+        let _ = state::write_working_set_for_session(session_id, &dive_context);
         let response = HookResponse {
-            additional_context: Some(oh_context),
+            additional_context: Some(dive_context),
         };
         let json = serde_json::to_string(&response).map_err(|e| e.to_string())?;
         println!("{}", json);
@@ -99,14 +102,14 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
         }
     };
 
-    // Combine OH context (always included if present) with filtered state
-    let final_content = if has_oh_context {
+    // Combine dive context (always included if present) with filtered state
+    let final_content = if has_dive_context {
         if compile_result.has_relevant {
-            // Both OH context and relevant state - combine them
-            format!("{}\n\n---\n\n## Working Memory\n\n{}", oh_context, compile_result.content)
+            // Both dive context and relevant state - combine them
+            format!("{}\n\n---\n\n## Working Memory\n\n{}", dive_context, compile_result.content)
         } else {
-            // Only OH context
-            oh_context.clone()
+            // Only dive context
+            dive_context.clone()
         }
     } else {
         compile_result.content.clone()

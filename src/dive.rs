@@ -1,10 +1,10 @@
 //! Dive pack integration with Open Horizons
 //!
-//! Fetches curated grounding context from OH dive packs and writes to OH_context.md
+//! Fetches curated grounding context from OH dive packs and writes to dive_context.md
 
 use crate::state;
 
-/// Load a dive pack from OH and write to OH_context.md
+/// Load a dive pack from OH and write to dive_context.md
 pub fn load(pack_id: &str) -> Result<(), String> {
     if !state::is_initialized() {
         return Err("Not initialized. Run 'wm init' first.".to_string());
@@ -48,48 +48,48 @@ pub fn load(pack_id: &str) -> Result<(), String> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Dive pack missing rendered_md field".to_string())?;
 
-    // Write to OH_context.md
-    let oh_context_path = state::wm_path("OH_context.md");
-    std::fs::write(&oh_context_path, rendered_md)
-        .map_err(|e| format!("Failed to write OH_context.md: {}", e))?;
+    // Write to dive_context.md
+    let dive_context_path = state::wm_path("dive_context.md");
+    std::fs::write(&dive_context_path, rendered_md)
+        .map_err(|e| format!("Failed to write dive_context.md: {}", e))?;
 
-    println!("✓ Dive pack loaded to .wm/OH_context.md ({} bytes)", rendered_md.len());
+    println!("✓ Dive pack loaded to .wm/dive_context.md ({} bytes)", rendered_md.len());
     Ok(())
 }
 
-/// Clear the current OH context
+/// Clear the current dive context
 pub fn clear() -> Result<(), String> {
     if !state::is_initialized() {
         return Err("Not initialized. Run 'wm init' first.".to_string());
     }
 
-    let oh_context_path = state::wm_path("OH_context.md");
+    let dive_context_path = state::wm_path("dive_context.md");
 
-    if oh_context_path.exists() {
-        std::fs::remove_file(&oh_context_path)
-            .map_err(|e| format!("Failed to remove OH_context.md: {}", e))?;
-        println!("✓ OH context cleared");
+    if dive_context_path.exists() {
+        std::fs::remove_file(&dive_context_path)
+            .map_err(|e| format!("Failed to remove dive_context.md: {}", e))?;
+        println!("✓ Dive context cleared");
     } else {
-        println!("No OH context to clear");
+        println!("No dive context to clear");
     }
 
     Ok(())
 }
 
-/// Show current OH context
+/// Show current dive context
 pub fn show() -> Result<(), String> {
     if !state::is_initialized() {
         return Err("Not initialized. Run 'wm init' first.".to_string());
     }
 
-    let oh_context_path = state::wm_path("OH_context.md");
+    let dive_context_path = state::wm_path("dive_context.md");
 
-    if oh_context_path.exists() {
-        let content = std::fs::read_to_string(&oh_context_path)
-            .map_err(|e| format!("Failed to read OH_context.md: {}", e))?;
+    if dive_context_path.exists() {
+        let content = std::fs::read_to_string(&dive_context_path)
+            .map_err(|e| format!("Failed to read dive_context.md: {}", e))?;
         println!("{}", content);
     } else {
-        println!("No OH context loaded. Use 'wm dive load <pack-id>' to load a dive pack.");
+        println!("No dive context loaded. Use 'wm dive load <pack-id>' or /dive-prep to create one.");
     }
 
     Ok(())
