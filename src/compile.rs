@@ -1,18 +1,23 @@
 //! Working set compilation
 //!
-//! Reads state.md + intent → LLM filters for relevance → outputs working_set.md
-//! Acts as working memory: surfaces what's relevant RIGHT NOW for the task
+//! Reads distilled knowledge (guardrails + metis) and optional dive context,
+//! then combines them into a working set for the current session.
+//! All content is pre-curated, no LLM filtering needed.
 
-use crate::llm;
 use crate::state;
 use crate::types::HookResponse;
 
-/// Run wm compile with optional intent
+/// Distill directory constant (matches distill.rs)
+const DISTILL_DIR: &str = "distill";
+
+/// Run wm compile with optional intent (CLI entry point)
 /// AIDEV-NOTE: Returns Ok() instead of Err when not initialized. This is intentional:
 /// extract/compile can be triggered automatically by hooks, so they must not spam error
 /// logs in projects without .wm/. User-invoked commands like show/status still return
 /// Err to inform the user. See also: extract::run().
-pub fn run(intent: Option<String>) -> Result<(), String> {
+/// AIDEV-NOTE: Intent parameter is now unused since we don't do LLM filtering.
+/// Kept for API compatibility.
+pub fn run(_intent: Option<String>) -> Result<(), String> {
     if !state::is_initialized() {
         eprintln!("Not initialized. Run 'wm init' first.");
         return Ok(());
@@ -24,27 +29,33 @@ pub fn run(intent: Option<String>) -> Result<(), String> {
         return Ok(());
     }
 
-    let state = std::fs::read_to_string(state::wm_path("state.md")).unwrap_or_default();
+    // Read distilled knowledge (pre-curated, no filtering needed)
+    let guardrails = read_distilled_file("guardrails.md");
+    let metis = read_distilled_file("metis.md");
 
-    if state.trim().is_empty() {
-        println!("No knowledge in state.md yet. Run 'wm extract' first.");
+    // Check for dive context
+    let dive_context = std::fs::read_to_string(state::wm_path("dive_context.md"))
+        .or_else(|_| std::fs::read_to_string(state::wm_path("OH_context.md")))
+        .unwrap_or_default();
+
+    // Combine all sources
+    let combined = combine_context(&dive_context, &guardrails, &metis);
+
+    if combined.trim().is_empty() {
+        println!("No distilled knowledge found. Run 'wm distill' first.");
         return Ok(());
     }
 
-    let result = compile_with_llm(&state, intent.as_deref())?;
-
-    if result.has_relevant {
-        state::write_working_set(&result.content)
-            .map_err(|e| format!("Failed to write working set: {}", e))?;
-        println!("Compiled working set to .wm/working_set.md");
-    } else {
-        println!("No relevant knowledge for this intent.");
-    }
+    state::write_working_set(&combined)
+        .map_err(|e| format!("Failed to write working set: {}", e))?;
+    println!("Compiled working set to .wm/working_set.md");
     Ok(())
 }
 
 /// Run from post-submit hook - reads intent from stdin, outputs JSON
 /// Never blocks - returns empty response on any failure
+/// AIDEV-NOTE: Intent is consumed from stdin but not used for filtering since
+/// distilled content is pre-curated and always relevant.
 pub fn run_hook(session_id: &str) -> Result<(), String> {
     if !state::is_initialized() {
         // Silent success if not initialized
@@ -64,31 +75,38 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
 
     state::log("compile", "Hook fired");
 
-    let intent = read_hook_input();
-    state::log(
-        "compile",
-        &format!(
-            "Intent: {:?}, Session: {}",
-            intent.as_deref().unwrap_or("(none)").chars().take(50).collect::<String>(),
-            session_id
-        ),
-    );
+    // Consume stdin (intent) but don't use it - distilled content is always relevant
+    let _ = read_hook_input();
+    state::log("compile", &format!("Session: {}", session_id));
 
-    let state_content = std::fs::read_to_string(state::wm_path("state.md")).unwrap_or_default();
+    // Read distilled knowledge (pre-curated, no filtering needed)
+    let guardrails = read_distilled_file("guardrails.md");
+    let metis = read_distilled_file("metis.md");
 
     // Check for dive context (curated grounding from dive-prep)
     // Supports both dive_context.md (new) and OH_context.md (legacy)
     let dive_context = std::fs::read_to_string(state::wm_path("dive_context.md"))
         .or_else(|_| std::fs::read_to_string(state::wm_path("OH_context.md")))
         .unwrap_or_default();
-    let has_dive_context = !dive_context.trim().is_empty();
-    if has_dive_context {
-        state::log("compile", &format!("Dive context loaded: {} bytes", dive_context.len()));
+
+    // Log what we found
+    if !dive_context.trim().is_empty() {
+        state::log("compile", &format!("Dive context: {} bytes", dive_context.len()));
+    }
+    if !guardrails.trim().is_empty() {
+        state::log("compile", &format!("Guardrails: {} bytes", guardrails.len()));
+    }
+    if !metis.trim().is_empty() {
+        state::log("compile", &format!("Metis: {} bytes", metis.len()));
     }
 
-    // If no state and no dive context, return empty response
-    if state_content.trim().is_empty() && !has_dive_context {
-        state::log("compile", "No state or dive context, returning empty");
+    // Combine all sources (no LLM filtering - all content is pre-curated)
+    let final_content = combine_context(&dive_context, &guardrails, &metis);
+
+    let has_content = !final_content.trim().is_empty();
+
+    if !has_content {
+        state::log("compile", "No distilled content found, returning empty");
         let response = HookResponse {
             additional_context: None,
         };
@@ -97,60 +115,12 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    // If we have dive context but no state, just inject dive context directly (no LLM call needed)
-    if state_content.trim().is_empty() && has_dive_context {
-        state::log("compile", "Injecting dive context directly (no state to filter)");
-        let _ = state::write_working_set_for_session(session_id, &dive_context);
-        let response = HookResponse {
-            additional_context: Some(dive_context),
-        };
-        let json = serde_json::to_string(&response).map_err(|e| e.to_string())?;
-        println!("{}", json);
-        return Ok(());
-    }
-
-    state::log("compile", &format!("State size: {} bytes", state_content.len()));
-
-    // Try LLM call, but don't fail the hook if it errors
-    let compile_result = match compile_with_llm(&state_content, intent.as_deref()) {
-        Ok(result) => {
-            state::log("compile", &format!("LLM returned has_relevant={}, {} bytes",
-                result.has_relevant, result.content.len()));
-            result
-        }
-        Err(e) => {
-            state::log("compile", &format!("LLM error: {}", e));
-            CompileResult { has_relevant: false, content: String::new() }
-        }
-    };
-
-    // Combine dive context (always included if present) with filtered state
-    let final_content = if has_dive_context {
-        if compile_result.has_relevant {
-            // Both dive context and relevant state - combine them
-            format!("{}\n\n---\n\n## Working Memory\n\n{}", dive_context, compile_result.content)
-        } else {
-            // Only dive context
-            dive_context.clone()
-        }
-    } else {
-        compile_result.content.clone()
-    };
-
-    let has_content = !final_content.trim().is_empty();
-
-    // Only write working_set if there's content
-    if has_content {
-        let _ = state::write_working_set_for_session(session_id, &final_content);
-    }
+    // Write working_set for debugging/inspection
+    let _ = state::write_working_set_for_session(session_id, &final_content);
 
     // Output hook response
     let response = HookResponse {
-        additional_context: if has_content {
-            Some(final_content)
-        } else {
-            None
-        },
+        additional_context: Some(final_content),
     };
 
     let json = serde_json::to_string(&response).map_err(|e| e.to_string())?;
@@ -177,55 +147,31 @@ fn read_hook_input() -> Option<String> {
     }
 }
 
-/// Result of compilation - includes flag for whether relevant knowledge was found
-struct CompileResult {
-    has_relevant: bool,
-    content: String,
+/// Read a distilled file from .wm/distill/
+fn read_distilled_file(filename: &str) -> String {
+    let path = state::wm_path(DISTILL_DIR).join(filename);
+    std::fs::read_to_string(path).unwrap_or_default()
 }
 
-/// Use LLM to filter state for relevance to intent
-fn compile_with_llm(state: &str, intent: Option<&str>) -> Result<CompileResult, String> {
-    let intent_text = intent.unwrap_or("general coding task");
+/// Combine context sources into a single markdown document
+/// Order: dive_context (session-specific grounding) → guardrails → metis
+fn combine_context(dive_context: &str, guardrails: &str, metis: &str) -> String {
+    let mut sections = Vec::new();
 
-    // AIDEV-NOTE: This prompt must FILTER, not ANSWER. Previous version caused
-    // the LLM to synthesize explanations when user prompt looked like a question.
-    // AIDEV-NOTE: Uses text-based markers like sg does - more reliable than JSON.
-    let system_prompt = r#"You are a relevance filter for an AI assistant's working memory.
+    // Dive context first (session-specific grounding)
+    if !dive_context.trim().is_empty() {
+        sections.push(dive_context.trim().to_string());
+    }
 
-Given accumulated knowledge and the user's current message, SELECT items that are relevant to their task.
+    // Guardrails (hard constraints)
+    if !guardrails.trim().is_empty() {
+        sections.push(guardrails.trim().to_string());
+    }
 
-DO NOT:
-- Answer the user's question
-- Synthesize new explanations
-- Add commentary or analysis
-- Reformat or summarize the knowledge
+    // Metis (wisdom/patterns)
+    if !metis.trim().is_empty() {
+        sections.push(metis.trim().to_string());
+    }
 
-ONLY output knowledge items from the accumulated state that apply to the current task.
-Copy relevant sections verbatim or near-verbatim.
-
-RESPONSE FORMAT (text-based, not JSON):
-
-If knowledge is relevant, respond:
-HAS_RELEVANT: YES
-
-<the relevant knowledge items as markdown>
-
-If nothing is relevant, respond:
-HAS_RELEVANT: NO
-
-That's it. Just the marker line, then content (if YES). No JSON, no code fences, no explanation."#;
-
-    let message = format!(
-        "ACCUMULATED KNOWLEDGE:\n{}\n\nUSER'S CURRENT INTENT:\n{}\n\nRELEVANT KNOWLEDGE:",
-        state, intent_text
-    );
-
-    // Use shared LLM utilities (handles env var guards, CLI invocation, JSON parsing)
-    let result_str = llm::call_claude(system_prompt, &message)?;
-    let response = llm::parse_marker_response(&result_str, "HAS_RELEVANT");
-
-    Ok(CompileResult {
-        has_relevant: response.is_positive,
-        content: response.content,
-    })
+    sections.join("\n\n---\n\n")
 }
