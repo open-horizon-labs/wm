@@ -129,6 +129,134 @@ wm compress
 
 Run periodically when state feels bloated, not after every session.
 
+## Dive Sessions
+
+A **dive** is a focused work session with explicit grounding. The metaphor: you don't just splash around—you *dive* into work with a clear purpose, knowing what you're after and what constraints apply.
+
+**Without a dive**, AI sessions often drift:
+- You start coding without clarity on the goal
+- Constraints surface mid-work ("oh wait, we can't do that because...")
+- Related knowledge sits unused because nothing surfaced it
+- The session ends without capturing what was learned
+
+**With a dive**, you start grounded:
+- **Intent** is explicit (fix, plan, explore, review, ship)
+- **Context** is curated (relevant knowledge, constraints, mission)
+- **Workflow** is suggested (what steps this intent typically follows)
+- **Focus** is documented (what specifically you're working on)
+
+This isn't overhead—it's the 30 seconds of setup that saves 30 minutes of drift.
+
+### The `/dive-prep` Skill
+
+Invoke `/dive-prep` in Claude Code to prepare a focused work session:
+
+```bash
+/dive-prep                          # Interactive - prompts for intent
+/dive-prep --intent fix             # Fix a bug
+/dive-prep --intent plan            # Design an approach
+/dive-prep --intent explore         # Understand something
+/dive-prep --intent review          # Reflect on recent work
+/dive-prep --intent ship            # Get something deployed
+```
+
+**What it does:**
+
+1. **Detects context** — Reads CLAUDE.md, git state, existing `.wm/` knowledge
+2. **Checks for OH** — If [Open Horizons](https://github.com/cloud-atlas-ai/open-horizons) MCP is connected, offers to link to an endeavor for strategic context (missions, guardrails, learnings)
+3. **Asks for intent** — If not provided, prompts for what you're trying to accomplish
+4. **Builds workflow** — Suggests steps based on intent type
+5. **Writes manifest** — Creates `.wm/dive_context.md` with curated grounding
+
+**With Open Horizons (recommended):**
+```bash
+/dive-prep --intent fix --oh bd9d6ace
+```
+
+OH provides the strategic layer: *why* you're doing this (mission), *what not to do* (guardrails), and *what you've learned* (metis).
+
+**Without OH:**
+```bash
+/dive-prep --intent explore
+# Prompts: "What are you exploring?"
+```
+
+Still valuable—you get explicit intent, workflow guidance, and documented focus.
+
+### The `wm dive` Commands
+
+Manage dive context directly:
+
+```bash
+wm dive load <pack-id>    # Load a pre-built dive pack from OH
+wm dive show              # Display current dive context
+wm dive clear             # Remove dive context
+```
+
+**Dive packs** are curated context bundles stored in Open Horizons. They're useful for recurring work patterns—load a pack instead of rebuilding context each time.
+
+**Configuration:**
+```bash
+# Set OH API key (required for wm dive load)
+export OH_API_KEY=your-key
+
+# Or configure in ~/.config/openhorizons/config.json:
+{
+  "api_key": "your-key",
+  "api_url": "https://app.openhorizons.me"
+}
+```
+
+## Batch Distillation
+
+The `distill` command extracts knowledge from all your Claude Code sessions at once, instead of per-turn extraction:
+
+```bash
+wm distill                    # Process all sessions
+wm distill --dry-run          # Preview what would be processed
+wm distill --force            # Re-extract even cached sessions
+```
+
+**How it works:**
+
+1. **Discovers sessions** — Finds all Claude Code transcripts for this project
+2. **Extracts incrementally** — Caches results, only processes new/changed sessions
+3. **Accumulates knowledge** — Writes raw extractions to `.wm/distill/raw_extractions.md`
+
+**When to use:**
+- Initial setup: extract knowledge from existing sessions
+- Periodic catchup: if per-turn extraction was paused
+- Audit: see what knowledge exists across all sessions
+
+**Output:**
+```
+.wm/distill/
+├── raw_extractions.md    # Accumulated knowledge from all sessions
+├── cache.json            # Extraction cache (enables incremental runs)
+└── errors.log            # Any extraction failures
+```
+
+## Pause and Resume
+
+Temporarily disable wm operations without uninstalling:
+
+```bash
+wm pause                  # Pause both extract and compile
+wm pause extract          # Pause only extraction
+wm pause compile          # Pause only context injection
+
+wm resume                 # Resume both operations
+wm resume extract         # Resume only extraction
+wm resume compile         # Resume only context injection
+
+wm status                 # Show current state
+```
+
+**When to use:**
+- **Sensitive work**: Pause extraction when working on confidential code
+- **Debugging**: Isolate issues by disabling one operation
+- **Performance**: Skip context injection on simple tasks
+
 ### Debugging
 
 ```bash
