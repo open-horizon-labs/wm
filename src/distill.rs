@@ -11,6 +11,7 @@
 //! The raw extractions are written to .wm/distill/raw_extractions.md for Pass 2.
 
 use crate::llm;
+use crate::oh;
 use crate::session::{self, SessionInfo};
 use crate::state;
 use crate::transcript::{format_context, read_transcript};
@@ -133,32 +134,26 @@ pub fn run(options: DistillOptions) -> Result<(), String> {
 
     // Pass 2: Categorize into guardrails vs metis
     println!("\n=== Pass 2: Categorizing into guardrails vs metis ===\n");
-    run_pass2(&raw_content)?;
+    let categorized = run_pass2(&raw_content)?;
 
-    // TODO(yz-pltc): Implement OH integration
-    // If --push-to-oh:
-    //   1. Call OH MCP to create guardrail/metis candidates
-    //   2. Report what was pushed
-    // AIDEV-NOTE: OH push will use direct HTTP calls to OH API (not MCP) since wm
-    // runs outside Claude Code's MCP context. Requires OH_API_KEY env var.
+    // Push to Open Horizons if requested
     if options.push_to_oh {
-        println!(
-            "\n[--push-to-oh not yet implemented - would push to OH context: {}]",
-            options.context_id.as_deref().unwrap_or("(none)")
-        );
+        let context_id = options.context_id.as_ref().unwrap(); // Already validated above
+        push_to_oh(context_id, &categorized)?;
     }
 
     Ok(())
 }
 
 /// Result of Pass 2 categorization
-struct CategorizationResult {
-    guardrails: Vec<String>,
-    metis: Vec<String>,
+pub struct CategorizationResult {
+    pub guardrails: Vec<String>,
+    pub metis: Vec<String>,
 }
 
 /// Run Pass 2: categorize raw extractions into guardrails vs metis
-fn run_pass2(raw_extractions: &str) -> Result<(), String> {
+/// Returns the categorization result for optional OH push.
+fn run_pass2(raw_extractions: &str) -> Result<CategorizationResult, String> {
     let result = call_categorization_llm(raw_extractions)?;
 
     let guardrail_count = result.guardrails.len();
@@ -187,7 +182,7 @@ fn run_pass2(raw_extractions: &str) -> Result<(), String> {
         guardrail_count, metis_count
     );
 
-    Ok(())
+    Ok(result)
 }
 
 /// Call LLM to categorize extractions into guardrails vs metis
@@ -317,6 +312,50 @@ fn write_categorized_file(filename: &str, content: &str) -> Result<(), String> {
     let path = distill_dir.join(filename);
     std::fs::write(&path, content)
         .map_err(|e| format!("Failed to write {}: {}", filename, e))?;
+
+    Ok(())
+}
+
+/// Push categorized items to Open Horizons
+fn push_to_oh(context_id: &str, categorized: &CategorizationResult) -> Result<(), String> {
+    if categorized.guardrails.is_empty() && categorized.metis.is_empty() {
+        println!("\n=== Push to OH ===\n");
+        println!("  ○ Nothing to push (no candidates)");
+        return Ok(());
+    }
+
+    println!("\n=== Push to Open Horizons ===\n");
+    println!("  Context: {}", context_id);
+
+    let result = oh::push_candidates(context_id, &categorized.guardrails, &categorized.metis)?;
+
+    // Report results
+    if result.guardrails_pushed > 0 {
+        println!("  ✓ {} guardrail(s) pushed", result.guardrails_pushed);
+    }
+    if result.metis_pushed > 0 {
+        println!("  ✓ {} metis item(s) pushed", result.metis_pushed);
+    }
+
+    // Report errors
+    if !result.errors.is_empty() {
+        println!("  ✗ {} item(s) failed:", result.errors.len());
+        for (content, error) in &result.errors {
+            println!("    - \"{}\": {}", content, error);
+        }
+    }
+
+    let total_pushed = result.guardrails_pushed + result.metis_pushed;
+    println!(
+        "\nOH push complete: {} item(s) pushed, {} error(s)",
+        total_pushed,
+        result.errors.len()
+    );
+
+    // Return error if all items failed
+    if total_pushed == 0 && !result.errors.is_empty() {
+        return Err("All items failed to push to OH".to_string());
+    }
 
     Ok(())
 }

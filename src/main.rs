@@ -8,6 +8,7 @@ mod dive;
 mod extract;
 mod init;
 mod llm;
+mod oh;
 mod session;
 mod show;
 mod state;
