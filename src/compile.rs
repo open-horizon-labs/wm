@@ -3,9 +3,9 @@
 //! Reads state.md + intent → LLM filters for relevance → outputs working_set.md
 //! Acts as working memory: surfaces what's relevant RIGHT NOW for the task
 
+use crate::llm;
 use crate::state;
 use crate::types::HookResponse;
-use std::process::{Command, Stdio};
 
 /// Run wm compile with optional intent
 /// AIDEV-NOTE: Returns Ok() instead of Err when not initialized. This is intentional:
@@ -185,10 +185,6 @@ struct CompileResult {
 
 /// Use LLM to filter state for relevance to intent
 fn compile_with_llm(state: &str, intent: Option<&str>) -> Result<CompileResult, String> {
-    // Prevent recursion
-    // SAFETY: Single-threaded, standard pattern for preventing recursive hooks
-    unsafe { std::env::set_var("WM_DISABLED", "1") };
-
     let intent_text = intent.unwrap_or("general coding task");
 
     // AIDEV-NOTE: This prompt must FILTER, not ANSWER. Previous version caused
@@ -224,101 +220,12 @@ That's it. Just the marker line, then content (if YES). No JSON, no code fences,
         state, intent_text
     );
 
-    // AIDEV-NOTE: Match sg's calling pattern exactly:
-    // - Pass message as argument (not stdin)
-    // - Use --no-session-persistence to prevent session bleed
-    // - stdin(Stdio::null()) explicitly
-    let mut cmd = Command::new("claude");
-    cmd.arg("-p")
-        .arg("--output-format")
-        .arg("json")
-        .arg("--no-session-persistence")
-        .arg("--system-prompt")
-        .arg(system_prompt)
-        .arg(&message)
-        .env("SUPEREGO_DISABLED", "1") // Prevent sg → wm → claude → sg loop
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .stdin(Stdio::null());
+    // Use shared LLM utilities (handles env var guards, CLI invocation, JSON parsing)
+    let result_str = llm::call_claude(system_prompt, &message)?;
+    let response = llm::parse_marker_response(&result_str, "HAS_RELEVANT");
 
-    let child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn claude CLI: {}", e))?;
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for claude CLI: {}", e))?;
-
-    // Re-enable WM
-    // SAFETY: Single-threaded, restoring previous state
-    unsafe { std::env::remove_var("WM_DISABLED") };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Claude CLI failed: {}", stderr));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Extract and parse result from Claude CLI JSON response
-    parse_compile_response(&stdout)
-}
-
-/// Strip markdown prefixes from a line (matches sg's strip_markdown_prefix exactly)
-fn strip_markdown_prefix(line: &str) -> &str {
-    line.trim().trim_start_matches(['#', '>', '*']).trim()
-}
-
-/// Parse HAS_RELEVANT: YES|NO format with lenient matching
-/// AIDEV-NOTE: Same robust pattern as extract.rs and sg - text markers, not JSON.
-fn parse_relevance_response(result_str: &str) -> CompileResult {
-    let lines: Vec<&str> = result_str.lines().collect();
-
-    for (i, line) in lines.iter().enumerate() {
-        let stripped = strip_markdown_prefix(line);
-
-        if let Some(value) = stripped.strip_prefix("HAS_RELEVANT:") {
-            let value = value.trim().to_uppercase();
-            if value == "YES" || value == "TRUE" {
-                // Content is everything after this line
-                let content = lines[i + 1..].join("\n").trim().to_string();
-                return CompileResult {
-                    has_relevant: true,
-                    content,
-                };
-            }
-            // NO or FALSE - nothing relevant
-            return CompileResult {
-                has_relevant: false,
-                content: String::new(),
-            };
-        }
-    }
-
-    // Fallback: no marker found, assume nothing relevant
-    state::log(
-        "compile",
-        "No HAS_RELEVANT marker found in response, treating as no relevant content",
-    );
-    CompileResult {
-        has_relevant: false,
-        content: String::new(),
-    }
-}
-
-/// Parse Claude CLI response and extract the CompileResult
-/// AIDEV-NOTE: Claude CLI wraps response in {"result": "..."}. We extract that string,
-/// then parse using text-based HAS_RELEVANT markers (not JSON).
-fn parse_compile_response(response: &str) -> Result<CompileResult, String> {
-    // First, parse the Claude CLI wrapper
-    let cli_response: serde_json::Value = serde_json::from_str(response)
-        .map_err(|e| format!("Failed to parse Claude CLI response: {}", e))?;
-
-    let result_str = cli_response
-        .get("result")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Claude CLI response missing 'result' field".to_string())?;
-
-    // Parse using text-based markers (like sg does)
-    Ok(parse_relevance_response(result_str))
+    Ok(CompileResult {
+        has_relevant: response.is_positive,
+        content: response.content,
+    })
 }

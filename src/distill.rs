@@ -34,6 +34,9 @@ pub struct DistillOptions {
 
     /// OH context ID to push to (required if push_to_oh is true)
     pub context_id: Option<String>,
+
+    /// Filter to a specific project by name (substring match)
+    pub project: Option<String>,
 }
 
 /// Cached extraction result for a session
@@ -68,16 +71,29 @@ pub fn run(options: DistillOptions) -> Result<(), String> {
         return Err("--context-id is required when using --push-to-oh".to_string());
     }
 
-    // Discover all sessions for this project
-    let project_path = session::current_project_path();
-    let sessions = session::discover_sessions(&project_path)?;
+    // Discover sessions, optionally filtered by project
+    let sessions = if let Some(ref project_filter) = options.project {
+        discover_sessions_by_project_filter(project_filter)?
+    } else {
+        // Default: current project only
+        let project_path = session::current_project_path();
+        session::discover_sessions(&project_path)?
+    };
 
     if sessions.is_empty() {
-        println!("No sessions found for project.");
+        if let Some(ref filter) = options.project {
+            println!("No sessions found for projects matching '{}'.", filter);
+        } else {
+            println!("No sessions found for project.");
+        }
         return Ok(());
     }
 
-    println!("Found {} session(s)", sessions.len());
+    if let Some(ref filter) = options.project {
+        println!("Found {} session(s) matching project filter '{}'", sessions.len(), filter);
+    } else {
+        println!("Found {} session(s)", sessions.len());
+    }
 
     if options.dry_run {
         println!("\n[DRY RUN] Would process:");
@@ -410,4 +426,46 @@ fn print_session_info_with_status(session: &SessionInfo, status: &str) {
         session.modified_at.format("%Y-%m-%d %H:%M"),
         status
     );
+}
+
+/// Discover sessions from projects matching a filter string
+fn discover_sessions_by_project_filter(filter: &str) -> Result<Vec<SessionInfo>, String> {
+    if filter.trim().is_empty() {
+        return Err("Project filter cannot be empty".to_string());
+    }
+
+    let matching_projects = session::find_projects_by_filter(filter)?;
+
+    if matching_projects.is_empty() {
+        return Err(format!(
+            "No projects found matching '{}'. Use 'wm show sessions' to list available projects.",
+            filter
+        ));
+    }
+
+    // If multiple matches, show which projects we're processing
+    if matching_projects.len() > 1 {
+        println!(
+            "Matched {} projects:",
+            matching_projects.len()
+        );
+        for p in &matching_projects {
+            println!("  {} ({} sessions)", p.project_id, p.session_count);
+        }
+        println!();
+    } else {
+        println!("Project: {}", matching_projects[0].project_id);
+    }
+
+    // Collect sessions from all matching projects
+    let mut all_sessions = Vec::new();
+    for project in matching_projects {
+        let sessions = session::discover_sessions_in_dir(&project.project_dir)?;
+        all_sessions.extend(sessions);
+    }
+
+    // Sort by modification time, newest first
+    all_sessions.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+
+    Ok(all_sessions)
 }

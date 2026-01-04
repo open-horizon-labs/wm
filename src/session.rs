@@ -127,6 +127,82 @@ pub fn current_project_path() -> PathBuf {
     }
 }
 
+/// Information about a Claude project directory
+#[derive(Debug, Clone)]
+pub struct ProjectInfo {
+    /// Project ID (directory name in ~/.claude/projects/)
+    pub project_id: String,
+
+    /// Full path to the project directory
+    pub project_dir: PathBuf,
+
+    /// Number of session files
+    pub session_count: usize,
+}
+
+/// List all Claude projects in ~/.claude/projects/
+///
+/// Returns projects sorted alphabetically by project_id
+pub fn list_all_projects() -> Result<Vec<ProjectInfo>, String> {
+    let projects_dir = claude_projects_dir()
+        .ok_or_else(|| "Could not determine Claude projects directory".to_string())?;
+
+    if !projects_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let entries = std::fs::read_dir(&projects_dir)
+        .map_err(|e| format!("Failed to read projects directory: {}", e))?;
+
+    let mut projects: Vec<ProjectInfo> = entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+
+            // Only consider directories
+            if !path.is_dir() {
+                return None;
+            }
+
+            let project_id = path.file_name()?.to_str()?.to_string();
+
+            // Count .jsonl files (sessions)
+            let session_count = std::fs::read_dir(&path)
+                .ok()?
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        == Some("jsonl")
+                })
+                .count();
+
+            Some(ProjectInfo {
+                project_id,
+                project_dir: path,
+                session_count,
+            })
+        })
+        .collect();
+
+    // Sort alphabetically
+    projects.sort_by(|a, b| a.project_id.cmp(&b.project_id));
+
+    Ok(projects)
+}
+
+/// Find projects matching a filter string (case-insensitive substring match)
+pub fn find_projects_by_filter(filter: &str) -> Result<Vec<ProjectInfo>, String> {
+    let all_projects = list_all_projects()?;
+    let filter_lower = filter.to_lowercase();
+
+    Ok(all_projects
+        .into_iter()
+        .filter(|p| p.project_id.to_lowercase().contains(&filter_lower))
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
