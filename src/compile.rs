@@ -5,7 +5,7 @@
 //! All content is pre-curated, no LLM filtering needed.
 
 use crate::state;
-use crate::types::HookResponse;
+use crate::types::{HookResponse, HookSpecificOutput};
 
 /// Distill directory constant (matches distill.rs)
 const DISTILL_DIR: &str = "distill";
@@ -66,7 +66,7 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
     if !state::is_compile_enabled() {
         state::log("compile", "Paused via config, returning empty");
         let response = HookResponse {
-            additional_context: None,
+            hook_specific_output: None,
         };
         let json = serde_json::to_string(&response).map_err(|e| e.to_string())?;
         println!("{}", json);
@@ -108,7 +108,7 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
     if !has_content {
         state::log("compile", "No distilled content found, returning empty");
         let response = HookResponse {
-            additional_context: None,
+            hook_specific_output: None,
         };
         let json = serde_json::to_string(&response).map_err(|e| e.to_string())?;
         println!("{}", json);
@@ -118,9 +118,12 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
     // Write working_set for debugging/inspection
     let _ = state::write_working_set_for_session(session_id, &final_content);
 
-    // Output hook response
+    // Output hook response with proper Claude Code structure
     let response = HookResponse {
-        additional_context: Some(final_content),
+        hook_specific_output: Some(HookSpecificOutput {
+            hook_event_name: "UserPromptSubmit".to_string(),
+            additional_context: Some(final_content),
+        }),
     };
 
     let json = serde_json::to_string(&response).map_err(|e| e.to_string())?;
