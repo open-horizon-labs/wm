@@ -1,8 +1,8 @@
 class Wm < Formula
   desc "Working memory for AI coding assistants"
   homepage "https://github.com/cloud-atlas-ai/wm"
-  url "https://github.com/cloud-atlas-ai/wm/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "502b217da3e844341bcbde081f7af0f0345fc7b485f089b92d23c7fdc4e5ed3d"
+  url "https://github.com/cloud-atlas-ai/wm/archive/refs/tags/v0.2.1.tar.gz"
+  sha256 "ee9dcfbb92b11f323424266974a05bb2f2beb775c152e91b0f8e35fe4fd14148"
   license :cannot_represent
 
   depends_on "rust" => :build
