@@ -2,6 +2,10 @@
 
 **wm** automatically captures tacit knowledge from your coding sessions and surfaces relevant context for each new task. It's the memory layer that helps AI assistants learn how *you* work.
 
+**Supported platforms:**
+- **Claude Code** - Full support via plugin
+- **OpenAI Codex CLI** - Alpha support via skill (agent-invoked)
+
 ## The Problem
 
 LLMs have amnesia. Every conversation starts fresh. The patterns you've established, the constraints you've discovered, the preferences you've revealed—all forgotten.
@@ -36,12 +40,12 @@ The result: AI assistants that remember your patterns across sessions.
 - Tool outputs or code snippets
 - Content from CLAUDE.md (already explicit)
 
-## Installation
+## Quickstart: Claude Code
 
 ### Prerequisites
 
 - [Claude Code](https://claude.com/code) CLI
-- [superego](https://github.com/cloud-atlas-ai/superego) (optional, but recommended)
+- [superego](https://github.com/cloud-atlas-ai/superego) (optional, but recommended for extraction triggers)
 
 ### Option 1: Homebrew (macOS)
 
@@ -78,6 +82,77 @@ wm init
 ```
 
 This creates a `.wm/` directory to store accumulated knowledge.
+
+## Quickstart: OpenAI Codex CLI (Alpha)
+
+Codex support uses agent skills that can be invoked at decision points. Most features work, but session auto-discovery is limited due to Codex's different session storage format.
+
+**What works:**
+- ✅ Manual knowledge capture/review (state.md, working_set.md)
+- ✅ Dive prep with context gathering
+- ✅ Compress and pause operations
+- ⚠️ Distill requires manual transcript paths (no auto-discovery yet)
+
+```bash
+# 1. Install the binary (choose one)
+brew install cloud-atlas-ai/wm/wm           # macOS
+cargo install wm                            # All platforms
+
+# 2. Install the skills
+mkdir -p ~/.codex/skills
+ln -s /path/to/wm/plugin ~/.codex/skills/wm
+
+# Or download agents individually:
+mkdir -p ~/.codex/skills/wm/agents
+BASE_URL="https://raw.githubusercontent.com/cloud-atlas-ai/wm/main/plugin/agents"
+curl -L -o ~/.codex/skills/wm/agents/dive-prep.md $BASE_URL/dive-prep.md
+curl -L -o ~/.codex/skills/wm/agents/review.md $BASE_URL/review.md
+curl -L -o ~/.codex/skills/wm/agents/distill.md $BASE_URL/distill.md
+curl -L -o ~/.codex/skills/wm/agents/compress.md $BASE_URL/compress.md
+curl -L -o ~/.codex/skills/wm/agents/pause.md $BASE_URL/pause.md
+```
+
+**Available Agent Skills:**
+
+| Skill | Support | When to Use |
+|-------|---------|-------------|
+| `$wm:dive-prep` | ✅ Full | Prepare focused work session with intent, context, and workflow |
+| `$wm:review` | ✅ Full | Review accumulated knowledge and current context |
+| `$wm:compress` | ✅ Full | Synthesize state.md to higher-level abstractions |
+| `$wm:pause` | ✅ Full | Pause/resume operations (extract, compile, or both) |
+| `$wm:distill` | ⚠️ Manual | Batch extract (requires manual transcript paths) |
+
+**Typical Workflows:**
+
+```bash
+# Session start - prepare dive context
+$wm:dive-prep --intent fix
+
+# Mid-session - review what wm knows
+$wm:review
+
+# Maintenance - compress accumulated knowledge
+$wm:compress
+
+# Sensitive work - pause extraction
+$wm:pause extract
+
+# Manual extraction from Codex session (since auto-discovery isn't supported yet)
+# Find your sessions:
+ls ~/.codex/sessions/2026/01/*/rollout-*.jsonl
+# Extract from specific transcript:
+wm extract --transcript ~/.codex/sessions/2026/01/06/rollout-<timestamp>-<uuid>.jsonl
+```
+
+**Why limited session discovery?**
+
+Codex stores sessions in `~/.codex/sessions/YYYY/MM/DD/` with different naming and structure than Claude Code's `~/.claude/projects/<project-id>/`. Auto-discovery support for Codex sessions is tracked in [#11](https://github.com/cloud-atlas-ai/wm/issues/11).
+
+**Manual Commands:**
+
+All CLI commands work normally: `wm init`, `wm show state`, `wm show working`, etc.
+
+See [plugin/agents/](plugin/agents/) for detailed documentation on each skill.
 
 ## Usage
 

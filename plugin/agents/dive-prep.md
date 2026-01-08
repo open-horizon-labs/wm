@@ -1,11 +1,15 @@
 ---
-name: dive-prep
 description: Prepare a grounded dive session with context from multiple sources
+model: inherit
 ---
 
 # Dive Prep
 
 Compile a session grounding manifest from available context sources, keyed by intent.
+
+**Platform Support:**
+- ✅ **Claude Code** - Full support
+- ✅ **Codex** - Full support (platform-independent context gathering)
 
 ## Invocation
 
