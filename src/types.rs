@@ -27,6 +27,16 @@ pub struct HookResponse {
 pub struct Config {
     #[serde(default)]
     pub operations: OperationsConfig,
+
+    #[serde(default)]
+    pub dive: DiveConfig,
+}
+
+/// Configuration for named dive preps
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DiveConfig {
+    /// Name of the currently active dive prep (None = use legacy dive_context.md)
+    pub current: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +56,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             operations: OperationsConfig::default(),
+            dive: DiveConfig::default(),
         }
     }
 }

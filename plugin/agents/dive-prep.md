@@ -11,6 +11,26 @@ Compile a session grounding manifest from available context sources, keyed by in
 - ✅ **Claude Code** - Full support
 - ✅ **Codex** - Full support (platform-independent context gathering)
 
+## Named Dive Preps
+
+WM supports multiple named dive preps (like git branches). Use the CLI to manage them:
+
+```bash
+wm dive list              # List all preps (* marks current)
+wm dive new <name>        # Create new prep
+wm dive switch <name>     # Switch to a prep
+wm dive delete <name>     # Delete a prep
+wm dive save <name>       # Save current dive_context.md as named prep
+wm dive current           # Show current prep name
+wm dive show [name]       # Show prep content
+```
+
+When `/dive-prep` creates a manifest, you can save it as a named prep:
+1. Run `/dive-prep` to generate context
+2. Run `wm dive save my-feature` to save and activate it
+
+Named preps are stored in `.wm/dives/{name}.md` and the current prep is tracked in `config.toml`.
+
 ## Invocation
 
 `/dive-prep [--intent <type>] [options]`

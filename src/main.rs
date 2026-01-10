@@ -114,17 +114,54 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum DiveCommands {
-    /// Load a dive pack from OH and write to OH_context.md
+    /// List all dive preps (marks current with *)
+    List,
+
+    /// Create a new named dive prep
+    New {
+        /// Name for the dive prep (kebab-case)
+        name: String,
+    },
+
+    /// Switch to a named dive prep
+    Switch {
+        /// Name of the prep to switch to
+        name: String,
+    },
+
+    /// Delete a named dive prep
+    Delete {
+        /// Name of the prep to delete
+        name: String,
+    },
+
+    /// Save current dive_context.md as a named prep
+    Save {
+        /// Name to save as (kebab-case)
+        name: String,
+    },
+
+    /// Show current dive prep name
+    Current,
+
+    /// Show dive prep content
+    Show {
+        /// Name of prep to show (default: current)
+        name: Option<String>,
+    },
+
+    /// Load a dive pack from OH
     Load {
         /// Dive pack ID to load
         pack_id: String,
+
+        /// Save as named prep instead of dive_context.md
+        #[arg(long)]
+        name: Option<String>,
     },
 
-    /// Clear the current OH context
+    /// Clear the current dive context
     Clear,
-
-    /// Show current OH context
-    Show,
 }
 
 #[derive(Subcommand)]
@@ -171,9 +208,15 @@ fn main() -> ExitCode {
         }),
         Commands::Show { what, session_id } => show::run(&what, session_id.as_deref()),
         Commands::Dive { command } => match command {
-            DiveCommands::Load { pack_id } => dive::load(&pack_id),
+            DiveCommands::List => dive::list(),
+            DiveCommands::New { name } => dive::new(&name, None),
+            DiveCommands::Switch { name } => dive::switch(&name),
+            DiveCommands::Delete { name } => dive::delete(&name),
+            DiveCommands::Save { name } => dive::save(&name),
+            DiveCommands::Current => dive::current(),
+            DiveCommands::Show { name } => dive::show(name.as_deref()),
+            DiveCommands::Load { pack_id, name } => dive::load(&pack_id, name.as_deref()),
             DiveCommands::Clear => dive::clear(),
-            DiveCommands::Show => dive::show(),
         },
         Commands::Pause { operation } => run_pause(operation),
         Commands::Resume { operation } => run_resume(operation),

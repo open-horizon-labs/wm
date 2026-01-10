@@ -95,3 +95,57 @@ pub fn is_extract_enabled() -> bool {
 pub fn is_compile_enabled() -> bool {
     read_config().operations.compile
 }
+
+// ============================================================================
+// Dive prep management
+// ============================================================================
+
+const DIVES_DIR: &str = "dives";
+
+/// Get the dives directory path (.wm/dives/)
+pub fn dive_dir() -> PathBuf {
+    wm_path(DIVES_DIR)
+}
+
+/// Get path to a named dive prep (.wm/dives/{name}.md)
+pub fn dive_prep_path(name: &str) -> PathBuf {
+    dive_dir().join(format!("{}.md", name))
+}
+
+/// List all named dive preps (returns names without .md extension)
+pub fn list_dive_preps() -> io::Result<Vec<String>> {
+    let dir = dive_dir();
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut preps = Vec::new();
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map_or(false, |ext| ext == "md") {
+            if let Some(stem) = path.file_stem() {
+                preps.push(stem.to_string_lossy().to_string());
+            }
+        }
+    }
+    preps.sort();
+    Ok(preps)
+}
+
+/// Get the currently active dive prep name (None = use legacy fallback)
+pub fn current_dive() -> Option<String> {
+    read_config().dive.current
+}
+
+/// Set the current dive prep (None to clear)
+pub fn set_current_dive(name: Option<&str>) -> io::Result<()> {
+    let mut config = read_config();
+    config.dive.current = name.map(String::from);
+    write_config(&config)
+}
+
+/// Ensure the dives directory exists
+pub fn ensure_dive_dir() -> io::Result<()> {
+    fs::create_dir_all(dive_dir())
+}

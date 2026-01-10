@@ -33,10 +33,8 @@ pub fn run(_intent: Option<String>) -> Result<(), String> {
     let guardrails = read_distilled_file("guardrails.md");
     let metis = read_distilled_file("metis.md");
 
-    // Check for dive context
-    let dive_context = std::fs::read_to_string(state::wm_path("dive_context.md"))
-        .or_else(|_| std::fs::read_to_string(state::wm_path("OH_context.md")))
-        .unwrap_or_default();
+    // Check for dive context - try named prep first, then legacy fallback
+    let dive_context = read_dive_context();
 
     // Combine all sources
     let combined = combine_context(&dive_context, &guardrails, &metis);
@@ -83,11 +81,8 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
     let guardrails = read_distilled_file("guardrails.md");
     let metis = read_distilled_file("metis.md");
 
-    // Check for dive context (curated grounding from dive-prep)
-    // Supports both dive_context.md (new) and OH_context.md (legacy)
-    let dive_context = std::fs::read_to_string(state::wm_path("dive_context.md"))
-        .or_else(|_| std::fs::read_to_string(state::wm_path("OH_context.md")))
-        .unwrap_or_default();
+    // Check for dive context - try named prep first, then legacy fallback
+    let dive_context = read_dive_context();
 
     // Log what we found
     if !dive_context.trim().is_empty() {
@@ -154,6 +149,27 @@ fn read_hook_input() -> Option<String> {
 fn read_distilled_file(filename: &str) -> String {
     let path = state::wm_path(DISTILL_DIR).join(filename);
     std::fs::read_to_string(path).unwrap_or_default()
+}
+
+/// Read dive context - tries named prep first, then legacy fallback
+/// AIDEV-NOTE: Priority order:
+/// 1. Current named prep from .wm/dives/{name}.md (if config.dive.current is set)
+/// 2. Legacy .wm/dive_context.md
+/// 3. Legacy .wm/OH_context.md
+fn read_dive_context() -> String {
+    // Try current named prep first
+    if let Some(current_name) = state::current_dive() {
+        let path = state::dive_prep_path(&current_name);
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return content;
+        }
+        // Current prep set but file missing - fall through to legacy
+    }
+
+    // Legacy fallback
+    std::fs::read_to_string(state::wm_path("dive_context.md"))
+        .or_else(|_| std::fs::read_to_string(state::wm_path("OH_context.md")))
+        .unwrap_or_default()
 }
 
 /// Combine context sources into a single markdown document
