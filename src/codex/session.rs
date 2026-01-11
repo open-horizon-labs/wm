@@ -199,6 +199,8 @@ mod tests {
         let dir = codex_sessions_dir();
         assert!(dir.is_some());
         let path = dir.unwrap();
-        assert!(path.to_string_lossy().contains(".codex/sessions"));
+        // Use Path semantics for cross-platform compatibility
+        let expected_suffix = Path::new(".codex").join("sessions");
+        assert!(path.ends_with(&expected_suffix));
     }
 }

@@ -858,13 +858,17 @@ fn save_codex_extraction_cache(cache: &HashMap<String, SessionExtraction>) -> Re
 
 /// Print Codex session info with status
 fn print_codex_session_info_with_status(session: &codex::CodexSessionInfo, status: &str) {
+    use std::path::Path;
+
     let size_kb = session.size_bytes / 1024;
     let cwd_display = session
         .cwd
         .as_deref()
-        .map(|c| {
-            // Show just the last path component
-            c.rsplit('/').next().unwrap_or(c)
+        .and_then(|c| {
+            // Use Path API for cross-platform compatibility
+            Path::new(c)
+                .file_name()
+                .and_then(|n| n.to_str())
         })
         .unwrap_or("unknown");
 
