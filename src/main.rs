@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::process::ExitCode;
 
+mod codex;
 mod compile;
 mod compress;
 mod distill;
@@ -71,6 +72,10 @@ enum Commands {
         /// Filter to a specific project by name (substring match)
         #[arg(long)]
         project: Option<String>,
+
+        /// Process Codex sessions instead of Claude Code sessions
+        #[arg(long)]
+        codex: bool,
     },
 
     /// Display state, working set, or sessions
@@ -199,12 +204,14 @@ fn main() -> ExitCode {
             push_to_oh,
             context_id,
             project,
+            codex,
         } => distill::run(distill::DistillOptions {
             dry_run,
             force,
             push_to_oh,
             context_id,
             project,
+            codex,
         }),
         Commands::Show { what, session_id } => show::run(&what, session_id.as_deref()),
         Commands::Dive { command } => match command {
