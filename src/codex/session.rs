@@ -146,7 +146,10 @@ fn read_session_cwd(path: &Path) -> Option<String> {
 
     // Check first 5 lines for session_meta
     for line in reader.lines().take(5) {
-        let line = line.ok()?;
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue, // Skip problematic lines
+        };
         if line.trim().is_empty() {
             continue;
         }

@@ -794,10 +794,8 @@ fn extract_from_codex_session(
     let entries = codex::read_codex_session(&session.session_path)
         .map_err(|e| format!("Failed to read Codex session: {}", e))?;
 
-    // Filter to relevant entries
-    let relevant: Vec<_> = entries.iter().filter(|e| e.is_relevant()).collect();
-
-    if relevant.is_empty() {
+    // Check if any relevant entries exist
+    if !entries.iter().any(|e| e.is_relevant()) {
         return Ok(SessionExtraction {
             session_id: session.session_id.clone(),
             extracted_at: Utc::now(),
