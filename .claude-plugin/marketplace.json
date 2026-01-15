@@ -13,7 +13,7 @@
       "name": "wm",
       "source": "./plugin",
       "description": "Working memory - surfaces relevant context based on user intent",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "author": {
         "name": "Cloud Atlas AI"
       }
