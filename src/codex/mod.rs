@@ -8,4 +8,4 @@ pub mod session;
 pub mod types;
 
 pub use reader::{format_context, read_codex_session};
-pub use session::{discover_sessions, CodexSessionInfo};
+pub use session::{CodexSessionInfo, discover_sessions};

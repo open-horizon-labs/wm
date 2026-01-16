@@ -30,7 +30,10 @@ pub fn run() -> Result<(), String> {
 
     state::log(
         "compress",
-        &format!("Starting compression of state.md ({} lines, {} chars)", line_count, char_count),
+        &format!(
+            "Starting compression of state.md ({} lines, {} chars)",
+            line_count, char_count
+        ),
     );
 
     println!("Compressing state.md ({} lines)...", line_count);
@@ -60,7 +63,10 @@ pub fn run() -> Result<(), String> {
 
         state::log(
             "compress",
-            &format!("Compressed {} → {} lines ({}% reduction)", line_count, new_line_count, reduction),
+            &format!(
+                "Compressed {} → {} lines ({}% reduction)",
+                line_count, new_line_count, reduction
+            ),
         );
         println!(
             "Compressed: {} → {} lines ({}% reduction)",
@@ -68,7 +74,10 @@ pub fn run() -> Result<(), String> {
         );
         println!("Backup saved to .wm/state.md.backup");
     } else {
-        state::log("compress", "No compression possible - state already concise");
+        state::log(
+            "compress",
+            "No compression possible - state already concise",
+        );
         println!("State is already concise - no compression needed.");
     }
 
@@ -130,12 +139,12 @@ WAS_COMPRESSED: YES
 If the state is already concise and no meaningful compression is possible, respond:
 WAS_COMPRESSED: NO"#;
 
-    let message = format!(
-        "CURRENT STATE TO COMPRESS:\n\n{}\n\nOUTPUT:",
-        current_state
-    );
+    let message = format!("CURRENT STATE TO COMPRESS:\n\n{}\n\nOUTPUT:", current_state);
 
-    state::log("compress", &format!("Sending {} chars to LLM", message.len()));
+    state::log(
+        "compress",
+        &format!("Sending {} chars to LLM", message.len()),
+    );
 
     let mut cmd = Command::new("claude");
     cmd.arg("-p")
@@ -204,10 +213,7 @@ fn parse_compression_result(result_str: &str) -> CompressionResult {
     }
 
     // Fallback: no marker found
-    state::log(
-        "compress",
-        "No WAS_COMPRESSED marker found in response",
-    );
+    state::log("compress", "No WAS_COMPRESSED marker found in response");
     CompressionResult {
         was_compressed: false,
         content: String::new(),

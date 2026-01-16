@@ -105,7 +105,11 @@ fn run_claude_distill(options: DistillOptions) -> Result<(), String> {
     }
 
     if let Some(ref filter) = options.project {
-        println!("Found {} Claude session(s) matching project filter '{}'", sessions.len(), filter);
+        println!(
+            "Found {} Claude session(s) matching project filter '{}'",
+            sessions.len(),
+            filter
+        );
     } else {
         println!("Found {} Claude session(s)", sessions.len());
     }
@@ -140,7 +144,10 @@ fn run_codex_distill(options: DistillOptions) -> Result<(), String> {
 
     if sessions.is_empty() {
         if let Some(ref filter) = options.project {
-            println!("No Codex sessions found for projects matching '{}'.", filter);
+            println!(
+                "No Codex sessions found for projects matching '{}'.",
+                filter
+            );
         } else {
             println!("No Codex sessions found.");
         }
@@ -148,7 +155,11 @@ fn run_codex_distill(options: DistillOptions) -> Result<(), String> {
     }
 
     if let Some(ref filter) = options.project {
-        println!("Found {} Codex session(s) matching project filter '{}'", sessions.len(), filter);
+        println!(
+            "Found {} Codex session(s) matching project filter '{}'",
+            sessions.len(),
+            filter
+        );
     } else {
         println!("Found {} Codex session(s)", sessions.len());
     }
@@ -177,7 +188,10 @@ fn run_codex_distill(options: DistillOptions) -> Result<(), String> {
 }
 
 /// Run Pass 2 and optionally push to OH (shared by both Claude and Codex paths)
-fn run_pass2_and_push(extractions: Vec<SessionExtraction>, options: DistillOptions) -> Result<(), String> {
+fn run_pass2_and_push(
+    extractions: Vec<SessionExtraction>,
+    options: DistillOptions,
+) -> Result<(), String> {
     // Accumulate raw extractions
     let raw_content = accumulate_extractions(&extractions);
 
@@ -192,7 +206,10 @@ fn run_pass2_and_push(extractions: Vec<SessionExtraction>, options: DistillOptio
         "\nPass 1 complete: {} session(s) with knowledge extracted.",
         extractions.iter().filter(|e| e.has_knowledge).count()
     );
-    println!("Raw extractions written to .wm/{}/raw_extractions.md", DISTILL_DIR);
+    println!(
+        "Raw extractions written to .wm/{}/raw_extractions.md",
+        DISTILL_DIR
+    );
 
     // Pass 2: Categorize into guardrails vs metis
     println!("\n=== Pass 2: Categorizing into guardrails vs metis ===\n");
@@ -225,7 +242,10 @@ fn run_pass2(raw_extractions: &str) -> Result<CategorizationResult, String> {
     if !result.guardrails.is_empty() {
         let content = format_categorized_output("Guardrails", &result.guardrails);
         write_categorized_file("guardrails.md", &content)?;
-        println!("  ✓ {} guardrail(s) written to .wm/{}/guardrails.md", guardrail_count, DISTILL_DIR);
+        println!(
+            "  ✓ {} guardrail(s) written to .wm/{}/guardrails.md",
+            guardrail_count, DISTILL_DIR
+        );
     } else {
         println!("  ○ No guardrails identified");
     }
@@ -234,7 +254,10 @@ fn run_pass2(raw_extractions: &str) -> Result<CategorizationResult, String> {
     if !result.metis.is_empty() {
         let content = format_categorized_output("Metis", &result.metis);
         write_categorized_file("metis.md", &content)?;
-        println!("  ✓ {} metis item(s) written to .wm/{}/metis.md", metis_count, DISTILL_DIR);
+        println!(
+            "  ✓ {} metis item(s) written to .wm/{}/metis.md",
+            metis_count, DISTILL_DIR
+        );
     } else {
         println!("  ○ No metis items identified");
     }
@@ -372,8 +395,7 @@ fn write_categorized_file(filename: &str, content: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to create distill directory: {}", e))?;
 
     let path = distill_dir.join(filename);
-    std::fs::write(&path, content)
-        .map_err(|e| format!("Failed to write {}: {}", filename, e))?;
+    std::fs::write(&path, content).map_err(|e| format!("Failed to write {}: {}", filename, e))?;
 
     Ok(())
 }
@@ -675,7 +697,10 @@ fn log_extraction_error(session_id: &str, error: &str) {
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
     // Collapse multi-line errors to single line for parseable log format
     let error_oneline = error.replace('\n', " | ");
-    let line = format!("[{}] Session {}: {}\n", timestamp, session_id, error_oneline);
+    let line = format!(
+        "[{}] Session {}: {}\n",
+        timestamp, session_id, error_oneline
+    );
 
     // Append to log file, ignore errors (logging should never fail the operation)
     let _ = OpenOptions::new()
@@ -866,9 +891,7 @@ fn print_codex_session_info_with_status(session: &codex::CodexSessionInfo, statu
         .as_deref()
         .and_then(|c| {
             // Use Path API for cross-platform compatibility
-            Path::new(c)
-                .file_name()
-                .and_then(|n| n.to_str())
+            Path::new(c).file_name().and_then(|n| n.to_str())
         })
         .unwrap_or("unknown");
 
@@ -903,10 +926,7 @@ fn discover_sessions_by_project_filter(filter: &str) -> Result<Vec<SessionInfo>,
 
     // If multiple matches, show which projects we're processing
     if matching_projects.len() > 1 {
-        println!(
-            "Matched {} projects:",
-            matching_projects.len()
-        );
+        println!("Matched {} projects:", matching_projects.len());
         for p in &matching_projects {
             println!("  {} ({} sessions)", p.project_id, p.session_count);
         }
@@ -949,7 +969,10 @@ METIS:
         assert_eq!(result.guardrails[1], "Always run tests before pushing");
 
         assert_eq!(result.metis.len(), 2);
-        assert_eq!(result.metis[0], "Prefer functional approaches when possible");
+        assert_eq!(
+            result.metis[0],
+            "Prefer functional approaches when possible"
+        );
         assert_eq!(
             result.metis[1],
             "Check existing patterns before adding new code"
@@ -1006,7 +1029,10 @@ METIS:
         assert_eq!(parse_bullet_item("- item"), Some("item".to_string()));
         assert_eq!(parse_bullet_item("* item"), Some("item".to_string()));
         assert_eq!(parse_bullet_item("• item"), Some("item".to_string()));
-        assert_eq!(parse_bullet_item("  - indented"), Some("indented".to_string()));
+        assert_eq!(
+            parse_bullet_item("  - indented"),
+            Some("indented".to_string())
+        );
         assert_eq!(parse_bullet_item(""), None);
         assert_eq!(parse_bullet_item("  "), None);
         assert_eq!(parse_bullet_item("-"), None);

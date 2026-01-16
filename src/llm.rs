@@ -32,7 +32,10 @@ impl EnvGuard {
         let original_value = std::env::var(var_name).ok();
         // SAFETY: Single-threaded, setting recursion prevention flag
         unsafe { std::env::set_var(var_name, value) };
-        Self { var_name, original_value }
+        Self {
+            var_name,
+            original_value,
+        }
     }
 }
 
@@ -60,7 +63,10 @@ pub fn call_claude(system_prompt: &str, message: &str) -> Result<String, String>
 
 /// Inner implementation of call_claude (without env var management)
 fn call_claude_inner(system_prompt: &str, message: &str) -> Result<String, String> {
-    state::log("llm", &format!("Calling Claude CLI (message: {} bytes)", message.len()));
+    state::log(
+        "llm",
+        &format!("Calling Claude CLI (message: {} bytes)", message.len()),
+    );
 
     let mut cmd = Command::new("claude");
     cmd.arg("-p")
@@ -138,7 +144,10 @@ pub fn parse_marker_response(text: &str, marker_name: &str) -> MarkerResponse {
     // Fallback: no marker found
     state::log(
         "llm",
-        &format!("No {} marker found in response, treating as negative", marker_name),
+        &format!(
+            "No {} marker found in response, treating as negative",
+            marker_name
+        ),
     );
     MarkerResponse {
         is_positive: false,

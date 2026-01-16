@@ -260,7 +260,10 @@ fn run_pause(operation: Option<String>) -> Result<(), String> {
             println!("Paused: compile");
         }
         Some(op) => {
-            return Err(format!("Unknown operation: {}. Use 'extract' or 'compile'.", op));
+            return Err(format!(
+                "Unknown operation: {}. Use 'extract' or 'compile'.",
+                op
+            ));
         }
         None => {
             config.operations.extract = false;
@@ -289,7 +292,10 @@ fn run_resume(operation: Option<String>) -> Result<(), String> {
             println!("Resumed: compile");
         }
         Some(op) => {
-            return Err(format!("Unknown operation: {}. Use 'extract' or 'compile'.", op));
+            return Err(format!(
+                "Unknown operation: {}. Use 'extract' or 'compile'.",
+                op
+            ));
         }
         None => {
             config.operations.extract = true;
@@ -308,8 +314,16 @@ fn run_status() -> Result<(), String> {
 
     let config = state::read_config();
 
-    let extract_status = if config.operations.extract { "running" } else { "paused" };
-    let compile_status = if config.operations.compile { "running" } else { "paused" };
+    let extract_status = if config.operations.extract {
+        "running"
+    } else {
+        "paused"
+    };
+    let compile_status = if config.operations.compile {
+        "running"
+    } else {
+        "paused"
+    };
 
     println!("extract: {}", extract_status);
     println!("compile: {}", compile_status);

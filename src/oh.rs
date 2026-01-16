@@ -72,7 +72,10 @@ pub fn push_candidates(
     for item in guardrails {
         match push_single_candidate(&api_url, &api_key, context_id, "guardrail", item) {
             Ok(candidate_id) => {
-                state::log("oh", &format!("Created guardrail candidate: {}", candidate_id));
+                state::log(
+                    "oh",
+                    &format!("Created guardrail candidate: {}", candidate_id),
+                );
                 result.guardrails_pushed += 1;
             }
             Err(e) => {

@@ -9,7 +9,9 @@
 
 use crate::llm;
 use crate::state;
-use crate::transcript::{format_context, get_messages_in_window, get_messages_since, read_transcript};
+use crate::transcript::{
+    format_context, get_messages_in_window, get_messages_since, read_transcript,
+};
 use chrono::{DateTime, Duration, Utc};
 use std::path::Path;
 
@@ -27,7 +29,9 @@ pub fn run(transcript_path: Option<String>, session_id: Option<String>) -> Resul
     // which uses batch processing with two passes (extraction then categorization).
     // See epic yz-90jh for the full distillation rewrite plan.
     eprintln!("⚠️  DEPRECATED: 'wm extract' will be replaced by 'wm distill' in a future version.");
-    eprintln!("   The new distill command processes all sessions in batch with improved categorization.");
+    eprintln!(
+        "   The new distill command processes all sessions in batch with improved categorization."
+    );
     eprintln!();
 
     if !state::is_initialized() {
@@ -171,10 +175,7 @@ fn extract_from_transcript(transcript_path: &str, session_id: Option<&str>) -> R
 
     // Read last extraction timestamp for this session
     let last_extracted = read_last_extracted(session_id);
-    state::log(
-        "extract",
-        &format!("Last extracted: {:?}", last_extracted),
-    );
+    state::log("extract", &format!("Last extracted: {:?}", last_extracted));
 
     // Parse transcript JSONL
     let entries = read_transcript(Path::new(transcript_path))
@@ -257,7 +258,10 @@ fn extract_from_transcript(transcript_path: &str, session_id: Option<&str>) -> R
 
         state::log(
             "extract",
-            &format!("Complete - {} messages processed, knowledge extracted", messages.len()),
+            &format!(
+                "Complete - {} messages processed, knowledge extracted",
+                messages.len()
+            ),
         );
         println!(
             "State updated ({} messages processed, session: {})",
@@ -267,7 +271,10 @@ fn extract_from_transcript(transcript_path: &str, session_id: Option<&str>) -> R
     } else {
         state::log(
             "extract",
-            &format!("Complete - {} messages processed, no new knowledge", messages.len()),
+            &format!(
+                "Complete - {} messages processed, no new knowledge",
+                messages.len()
+            ),
         );
         println!(
             "No new knowledge to extract ({} messages processed, session: {})",
@@ -354,9 +361,21 @@ HAS_KNOWLEDGE: NO"#;
     );
 
     // DEBUG: Log what we're sending
-    state::log("extract", &format!("Message length: {} bytes", message.len()));
-    state::log("extract", &format!("System prompt length: {} bytes", system_prompt.len()));
-    state::log("extract", &format!("Message preview (first 500): {}", &message.chars().take(500).collect::<String>()));
+    state::log(
+        "extract",
+        &format!("Message length: {} bytes", message.len()),
+    );
+    state::log(
+        "extract",
+        &format!("System prompt length: {} bytes", system_prompt.len()),
+    );
+    state::log(
+        "extract",
+        &format!(
+            "Message preview (first 500): {}",
+            &message.chars().take(500).collect::<String>()
+        ),
+    );
 
     // Use shared LLM utilities
     let result_str = llm::call_claude(system_prompt, &message)?;

@@ -190,7 +190,10 @@ mod tests {
         let json = r#"{"timestamp":"2025-11-04T00:16:08.855Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"**Thinking about this**"}}"#;
         let entry: CodexEntry = serde_json::from_str(json).unwrap();
         assert!(entry.is_agent_reasoning());
-        assert_eq!(entry.agent_reasoning_text(), Some("**Thinking about this**"));
+        assert_eq!(
+            entry.agent_reasoning_text(),
+            Some("**Thinking about this**")
+        );
     }
 
     #[test]
@@ -204,7 +207,8 @@ mod tests {
     #[test]
     fn test_is_relevant() {
         let user_msg = r#"{"timestamp":"t","type":"event_msg","payload":{"type":"user_message","message":"test"}}"#;
-        let token_count = r#"{"timestamp":"t","type":"event_msg","payload":{"type":"token_count","info":null}}"#;
+        let token_count =
+            r#"{"timestamp":"t","type":"event_msg","payload":{"type":"token_count","info":null}}"#;
 
         let user_entry: CodexEntry = serde_json::from_str(user_msg).unwrap();
         let token_entry: CodexEntry = serde_json::from_str(token_count).unwrap();

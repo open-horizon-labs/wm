@@ -86,10 +86,16 @@ pub fn run_hook(session_id: &str) -> Result<(), String> {
 
     // Log what we found
     if !dive_context.trim().is_empty() {
-        state::log("compile", &format!("Dive context: {} bytes", dive_context.len()));
+        state::log(
+            "compile",
+            &format!("Dive context: {} bytes", dive_context.len()),
+        );
     }
     if !guardrails.trim().is_empty() {
-        state::log("compile", &format!("Guardrails: {} bytes", guardrails.len()));
+        state::log(
+            "compile",
+            &format!("Guardrails: {} bytes", guardrails.len()),
+        );
     }
     if !metis.trim().is_empty() {
         state::log("compile", &format!("Metis: {} bytes", metis.len()));
@@ -136,7 +142,10 @@ fn read_hook_input() -> Option<String> {
     if io::stdin().read_to_string(&mut buffer).is_ok() && !buffer.trim().is_empty() {
         // Try to parse as JSON hook input
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&buffer) {
-            return json.get("prompt").and_then(|v| v.as_str()).map(String::from);
+            return json
+                .get("prompt")
+                .and_then(|v| v.as_str())
+                .map(String::from);
         }
         // Fallback: treat raw input as the intent
         Some(buffer.trim().to_string())

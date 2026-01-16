@@ -170,12 +170,7 @@ pub fn list_all_projects() -> Result<Vec<ProjectInfo>, String> {
             let session_count = std::fs::read_dir(&path)
                 .ok()?
                 .filter_map(|e| e.ok())
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .and_then(|ext| ext.to_str())
-                        == Some("jsonl")
-                })
+                .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
                 .count();
 
             Some(ProjectInfo {

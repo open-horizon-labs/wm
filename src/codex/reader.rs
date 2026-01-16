@@ -201,7 +201,8 @@ mod tests {
 
     #[test]
     fn test_strip_environment_context() {
-        let text = "<environment_context>\n  <cwd>/test</cwd>\n</environment_context>\n\nActual message";
+        let text =
+            "<environment_context>\n  <cwd>/test</cwd>\n</environment_context>\n\nActual message";
         let cleaned = strip_environment_context(text);
         assert_eq!(cleaned, "Actual message");
     }

@@ -52,12 +52,18 @@ pub fn new(name: &str, content: Option<&str>) -> Result<(), String> {
 
     let path = state::dive_prep_path(name);
     if path.exists() {
-        return Err(format!("Prep '{}' already exists. Use 'wm dive switch {}' to activate it.", name, name));
+        return Err(format!(
+            "Prep '{}' already exists. Use 'wm dive switch {}' to activate it.",
+            name, name
+        ));
     }
 
     state::ensure_dive_dir().map_err(|e| format!("Failed to create dives directory: {}", e))?;
 
-    let default_content = format!("# Dive: {}\n\nIntent: \n\n## Focus\n\n## Constraints\n", name);
+    let default_content = format!(
+        "# Dive: {}\n\nIntent: \n\n## Focus\n\n## Constraints\n",
+        name
+    );
     let initial_content = content.unwrap_or(&default_content);
     fs::write(&path, initial_content).map_err(|e| format!("Failed to create prep: {}", e))?;
 
@@ -81,8 +87,7 @@ pub fn switch(name: &str) -> Result<(), String> {
         ));
     }
 
-    state::set_current_dive(Some(name))
-        .map_err(|e| format!("Failed to update config: {}", e))?;
+    state::set_current_dive(Some(name)).map_err(|e| format!("Failed to update config: {}", e))?;
 
     println!("✓ Switched to dive prep '{}'", name);
 
@@ -104,8 +109,7 @@ pub fn delete(name: &str) -> Result<(), String> {
 
     // If this was the current prep, clear it
     if state::current_dive().as_deref() == Some(name) {
-        state::set_current_dive(None)
-            .map_err(|e| format!("Failed to update config: {}", e))?;
+        state::set_current_dive(None).map_err(|e| format!("Failed to update config: {}", e))?;
         println!("✓ Deleted dive prep '{}' (was current, now cleared)", name);
     } else {
         println!("✓ Deleted dive prep '{}'", name);
@@ -147,8 +151,7 @@ pub fn save(name: &str) -> Result<(), String> {
     fs::write(&target_path, &content).map_err(|e| format!("Failed to save prep: {}", e))?;
 
     // Set as current
-    state::set_current_dive(Some(name))
-        .map_err(|e| format!("Failed to update config: {}", e))?;
+    state::set_current_dive(Some(name)).map_err(|e| format!("Failed to update config: {}", e))?;
 
     println!("✓ Saved current dive context as '{}' (now active)", name);
 
@@ -179,16 +182,19 @@ pub fn show(name: Option<&str>) -> Result<(), String> {
         Some(n) => {
             // Show specific prep
             let path = state::dive_prep_path(n);
-            fs::read_to_string(&path)
-                .map_err(|_| format!("Prep '{}' not found.", n))?
+            fs::read_to_string(&path).map_err(|_| format!("Prep '{}' not found.", n))?
         }
         None => {
             // Show current prep or legacy fallback
             match state::current_dive() {
                 Some(current_name) => {
                     let path = state::dive_prep_path(&current_name);
-                    fs::read_to_string(&path)
-                        .map_err(|_| format!("Current prep '{}' not found (may have been deleted).", current_name))?
+                    fs::read_to_string(&path).map_err(|_| {
+                        format!(
+                            "Current prep '{}' not found (may have been deleted).",
+                            current_name
+                        )
+                    })?
                 }
                 None => {
                     // Legacy fallback
@@ -221,7 +227,10 @@ pub fn load(pack_id: &str, save_as: Option<&str>) -> Result<(), String> {
 
     let api_key = std::env::var("OH_API_KEY")
         .or_else(|_| load_config_value("api_key"))
-        .map_err(|_| "OH API key not found. Set OH_API_KEY or configure ~/.config/openhorizons/config.json".to_string())?;
+        .map_err(|_| {
+            "OH API key not found. Set OH_API_KEY or configure ~/.config/openhorizons/config.json"
+                .to_string()
+        })?;
 
     // Fetch the dive pack
     let url = format!("{}/api/dive-packs/{}", api_url, pack_id);
@@ -235,7 +244,10 @@ pub fn load(pack_id: &str, save_as: Option<&str>) -> Result<(), String> {
         .map_err(|e| format!("Failed to fetch dive pack: {}", e))?;
 
     if !output.status.success() {
-        return Err(format!("Failed to fetch dive pack: {}", String::from_utf8_lossy(&output.stderr)));
+        return Err(format!(
+            "Failed to fetch dive pack: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
 
     let response: serde_json::Value = serde_json::from_slice(&output.stdout)
@@ -269,14 +281,21 @@ pub fn load(pack_id: &str, save_as: Option<&str>) -> Result<(), String> {
         state::set_current_dive(Some(name))
             .map_err(|e| format!("Failed to update config: {}", e))?;
 
-        println!("✓ Dive pack loaded as '{}' ({} bytes)", name, rendered_md.len());
+        println!(
+            "✓ Dive pack loaded as '{}' ({} bytes)",
+            name,
+            rendered_md.len()
+        );
     } else {
         // Legacy: write to dive_context.md
         let dive_context_path = state::wm_path("dive_context.md");
         fs::write(&dive_context_path, rendered_md)
             .map_err(|e| format!("Failed to write dive_context.md: {}", e))?;
 
-        println!("✓ Dive pack loaded to .wm/dive_context.md ({} bytes)", rendered_md.len());
+        println!(
+            "✓ Dive pack loaded to .wm/dive_context.md ({} bytes)",
+            rendered_md.len()
+        );
         println!("  Tip: Use --name <name> to save as a named prep");
     }
 
@@ -292,8 +311,7 @@ pub fn clear() -> Result<(), String> {
     // Clear current prep setting
     let had_current = state::current_dive().is_some();
     if had_current {
-        state::set_current_dive(None)
-            .map_err(|e| format!("Failed to update config: {}", e))?;
+        state::set_current_dive(None).map_err(|e| format!("Failed to update config: {}", e))?;
     }
 
     // Also remove legacy file if present
@@ -330,7 +348,8 @@ fn is_valid_prep_name(name: &str) -> bool {
     }
 
     // Only lowercase letters, numbers, and hyphens
-    name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    name.chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// Load a config value from ~/.config/openhorizons/config.json
@@ -345,11 +364,11 @@ fn load_config_value(key: &str) -> Result<String, String> {
         return Err("Config file not found".to_string());
     }
 
-    let content = fs::read_to_string(&config_path)
-        .map_err(|e| format!("Failed to read config: {}", e))?;
+    let content =
+        fs::read_to_string(&config_path).map_err(|e| format!("Failed to read config: {}", e))?;
 
-    let config: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse config: {}", e))?;
+    let config: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse config: {}", e))?;
 
     config
         .get(key)
