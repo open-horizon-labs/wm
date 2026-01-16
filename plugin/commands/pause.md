@@ -1,11 +1,11 @@
 # /wm:pause
 
-Capture session state for later resumption.
+Pause wm operations (extract, compile, or both).
 
 ## Usage
 
 ```
-/wm:pause
+/wm:pause [extract|compile]
 ```
 
 ## Execution
@@ -13,7 +13,23 @@ Capture session state for later resumption.
 Run the wm pause command:
 
 ```bash
-wm pause
+wm pause              # Pause both extract and compile
+wm pause extract      # Pause only extract
+wm pause compile      # Pause only compile
 ```
 
-Pass through the output. This saves current session context to `.wm/` for later resumption.
+To resume operations later:
+
+```bash
+wm resume             # Resume both
+wm resume extract     # Resume only extract
+wm resume compile     # Resume only compile
+```
+
+Check current status with:
+
+```bash
+wm status
+```
+
+Pass through the output to the user.

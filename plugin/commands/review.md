@@ -1,19 +1,31 @@
 # /wm:review
 
-Review current working memory state.
+Review current working memory state and context.
 
 ## Usage
 
 ```
-/wm:review
+/wm:review [state|working|sessions]
 ```
 
 ## Execution
 
-Run the wm review command or read the state directly:
+Use the `wm show` command to display working memory contents:
 
 ```bash
-wm review
+wm show state      # Show .wm/state.md
+wm show working    # Show compiled working set
+wm show sessions   # List available sessions
 ```
 
-Or if `wm review` doesn't exist, read and display `.wm/state.md` to show the current working memory contents.
+Without arguments, show the state:
+
+```bash
+wm show
+```
+
+For a comprehensive review, you can also:
+1. Show distilled knowledge: `cat .wm/distill/guardrails.md .wm/distill/metis.md`
+2. Show dive context: `cat .wm/dive_context.md`
+
+Pass through the output to the user.
