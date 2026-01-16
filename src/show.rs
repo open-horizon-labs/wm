@@ -48,13 +48,13 @@ fn show_working(session_id: Option<&str>) -> Result<(), String> {
 
     // Read dive context if present
     let dive_path = state::wm_path("dive_context.md");
-    if let Ok(dive_content) = std::fs::read_to_string(&dive_path) {
-        if !dive_content.trim().is_empty() {
-            println!("## Dive Context\n");
-            println!("{}", dive_content.trim());
-            println!();
-            has_content = true;
-        }
+    if let Ok(dive_content) = std::fs::read_to_string(&dive_path)
+        && !dive_content.trim().is_empty()
+    {
+        println!("## Dive Context\n");
+        println!("{}", dive_content.trim());
+        println!();
+        has_content = true;
     }
 
     // Read working set (compiled state)
@@ -66,14 +66,14 @@ fn show_working(session_id: Option<&str>) -> Result<(), String> {
         None => state::read_working_set(),
     };
 
-    if let Ok(content) = working_content {
-        if !content.trim().is_empty() {
-            if has_content {
-                println!("## Compiled Knowledge\n");
-            }
-            println!("{}", content.trim());
-            has_content = true;
+    if let Ok(content) = working_content
+        && !content.trim().is_empty()
+    {
+        if has_content {
+            println!("## Compiled Knowledge\n");
         }
+        println!("{}", content.trim());
+        has_content = true;
     }
 
     if !has_content {

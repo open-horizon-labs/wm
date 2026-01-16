@@ -23,7 +23,7 @@ pub struct HookResponse {
 
 /// Project-level configuration for WM operations
 /// Stored in .wm/config.toml
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub operations: OperationsConfig,
@@ -50,15 +50,6 @@ pub struct OperationsConfig {
 
 fn default_true() -> bool {
     true
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            operations: OperationsConfig::default(),
-            dive: DiveConfig::default(),
-        }
-    }
 }
 
 impl Default for OperationsConfig {

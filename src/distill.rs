@@ -120,12 +120,12 @@ fn run_claude_distill(options: DistillOptions) -> Result<(), String> {
         for session in &sessions {
             let status = if options.force {
                 "force"
-            } else if needs_extraction(&session, &cache) {
+            } else if needs_extraction(session, &cache) {
                 "new/changed"
             } else {
                 "cached"
             };
-            print_session_info_with_status(&session, status);
+            print_session_info_with_status(session, status);
         }
         return Ok(());
     }
@@ -170,12 +170,12 @@ fn run_codex_distill(options: DistillOptions) -> Result<(), String> {
         for session in &sessions {
             let status = if options.force {
                 "force"
-            } else if needs_codex_extraction(&session, &cache) {
+            } else if needs_codex_extraction(session, &cache) {
                 "new/changed"
             } else {
                 "cached"
             };
-            print_codex_session_info_with_status(&session, status);
+            print_codex_session_info_with_status(session, status);
         }
         return Ok(());
     }
@@ -339,13 +339,13 @@ fn parse_categorization_response(response: &str) -> Result<CategorizationResult,
         }
 
         // Parse bullet points
-        if let Some(section) = current_section {
-            if let Some(item) = parse_bullet_item(trimmed) {
-                match section {
-                    "guardrails" => guardrails.push(item),
-                    "metis" => metis.push(item),
-                    _ => {}
-                }
+        if let Some(section) = current_section
+            && let Some(item) = parse_bullet_item(trimmed)
+        {
+            match section {
+                "guardrails" => guardrails.push(item),
+                "metis" => metis.push(item),
+                _ => {}
             }
         }
     }
@@ -454,13 +454,14 @@ fn run_pass1(sessions: &[SessionInfo], force: bool) -> Result<Vec<SessionExtract
 
     for session in sessions {
         // Check if we can use cached extraction
-        if !force && !needs_extraction(session, &cache) {
-            if let Some(cached) = cache.get(&session.session_id) {
-                println!("  {} [cached]", session.session_id);
-                results.push(cached.clone());
-                skipped += 1;
-                continue;
-            }
+        if !force
+            && !needs_extraction(session, &cache)
+            && let Some(cached) = cache.get(&session.session_id)
+        {
+            println!("  {} [cached]", session.session_id);
+            results.push(cached.clone());
+            skipped += 1;
+            continue;
         }
 
         // Extract from this session
@@ -742,13 +743,14 @@ fn run_codex_pass1(
 
     for session in sessions {
         // Check if we can use cached extraction
-        if !force && !needs_codex_extraction(session, &cache) {
-            if let Some(cached) = cache.get(&session.session_id) {
-                println!("  {} [cached]", session.session_id);
-                results.push(cached.clone());
-                skipped += 1;
-                continue;
-            }
+        if !force
+            && !needs_codex_extraction(session, &cache)
+            && let Some(cached) = cache.get(&session.session_id)
+        {
+            println!("  {} [cached]", session.session_id);
+            results.push(cached.clone());
+            skipped += 1;
+            continue;
         }
 
         // Extract from this session

@@ -78,31 +78,31 @@ fn find_transcript(explicit_path: Option<String>) -> Result<String, String> {
     }
 
     // Try environment variable
-    if let Ok(path) = std::env::var("CLAUDE_TRANSCRIPT_PATH") {
-        if std::path::Path::new(&path).exists() {
-            return Ok(path);
-        }
+    if let Ok(path) = std::env::var("CLAUDE_TRANSCRIPT_PATH")
+        && std::path::Path::new(&path).exists()
+    {
+        return Ok(path);
     }
 
     // Try to find in ~/.claude/projects/
     if let Some(home) = dirs::home_dir() {
         let claude_dir = home.join(".claude").join("projects");
-        if claude_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&claude_dir) {
-                let mut transcripts: Vec<_> = entries
-                    .filter_map(|e| e.ok())
-                    .filter(|e| e.path().join("transcript.jsonl").exists())
-                    .collect();
+        if claude_dir.exists()
+            && let Ok(entries) = std::fs::read_dir(&claude_dir)
+        {
+            let mut transcripts: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().join("transcript.jsonl").exists())
+                .collect();
 
-                transcripts.sort_by_key(|e| {
-                    std::fs::metadata(e.path().join("transcript.jsonl"))
-                        .and_then(|m| m.modified())
-                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                });
+            transcripts.sort_by_key(|e| {
+                std::fs::metadata(e.path().join("transcript.jsonl"))
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+            });
 
-                if let Some(latest) = transcripts.last() {
-                    return Ok(latest.path().join("transcript.jsonl").display().to_string());
-                }
+            if let Some(latest) = transcripts.last() {
+                return Ok(latest.path().join("transcript.jsonl").display().to_string());
             }
         }
     }

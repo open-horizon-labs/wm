@@ -105,26 +105,26 @@ pub fn format_context(entries: &[CodexEntry]) -> String {
                         output.push(')');
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
-        } else if entry.is_function_call_output() {
-            if let Some(output_text) = entry.function_call_output() {
-                // Truncate very long outputs (respecting UTF-8 boundaries)
-                let truncated = if output_text.len() > 500 {
-                    let truncate_at = output_text
-                        .char_indices()
-                        .take_while(|(i, _)| *i < 500)
-                        .last()
-                        .map(|(i, c)| i + c.len_utf8())
-                        .unwrap_or(0);
-                    format!("{}...[truncated]", &output_text[..truncate_at])
-                } else {
-                    output_text
-                };
-                output.push_str("TOOL_RESULT: ");
-                output.push_str(&truncated);
-                output.push_str("\n\n");
-            }
+        } else if entry.is_function_call_output()
+            && let Some(output_text) = entry.function_call_output()
+        {
+            // Truncate very long outputs (respecting UTF-8 boundaries)
+            let truncated = if output_text.len() > 500 {
+                let truncate_at = output_text
+                    .char_indices()
+                    .take_while(|(i, _)| *i < 500)
+                    .last()
+                    .map(|(i, c)| i + c.len_utf8())
+                    .unwrap_or(0);
+                format!("{}...[truncated]", &output_text[..truncate_at])
+            } else {
+                output_text
+            };
+            output.push_str("TOOL_RESULT: ");
+            output.push_str(&truncated);
+            output.push_str("\n\n");
         }
     }
 

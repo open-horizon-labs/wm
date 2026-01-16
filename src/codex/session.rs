@@ -154,10 +154,10 @@ fn read_session_cwd(path: &Path) -> Option<String> {
             continue;
         }
 
-        if let Ok(entry) = serde_json::from_str::<CodexEntry>(&line) {
-            if entry.is_session_meta() {
-                return entry.session_cwd().map(|s| s.to_string());
-            }
+        if let Ok(entry) = serde_json::from_str::<CodexEntry>(&line)
+            && entry.is_session_meta()
+        {
+            return entry.session_cwd().map(|s| s.to_string());
         }
     }
 
