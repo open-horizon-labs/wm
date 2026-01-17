@@ -5,6 +5,213 @@
 
 use crate::state;
 use std::fs;
+use std::process::Command;
+
+// ============================================================================
+// Prep command - scaffold dive context from local sources
+// ============================================================================
+
+/// Prepare a dive session by gathering local context
+pub fn prep(intent: Option<&str>, intent_type: &str) -> Result<(), String> {
+    if !state::is_initialized() {
+        return Err("Not initialized. Run 'wm init' first.".to_string());
+    }
+
+    let mut sections = Vec::new();
+
+    // Header
+    let now = chrono::Local::now().format("%Y-%m-%d").to_string();
+    sections.push("# Dive Session\n".to_string());
+    sections.push(format!("**Intent:** {}", intent_type));
+    sections.push(format!("**Started:** {}", now));
+
+    // Focus from intent
+    if let Some(intent_str) = intent {
+        sections.push(format!("**Focus:** {}", intent_str));
+    }
+
+    sections.push(String::new()); // blank line
+
+    // Gather local context
+    sections.push("## Context\n".to_string());
+
+    // Project section from CLAUDE.md
+    if let Ok(claude_md) = read_claude_md() {
+        sections.push("### Project\n".to_string());
+        sections.push(claude_md);
+        sections.push(String::new());
+    }
+
+    // Git state
+    if let Ok(git_info) = gather_git_context() {
+        sections.push("### Git State\n".to_string());
+        sections.push(git_info);
+        sections.push(String::new());
+    }
+
+    // Workflow based on intent type
+    sections.push("## Workflow\n".to_string());
+    sections.push(get_workflow(intent_type));
+
+    // Write to dive_context.md
+    let content = sections.join("\n");
+    let dive_context_path = state::wm_path("dive_context.md");
+    fs::write(&dive_context_path, &content)
+        .map_err(|e| format!("Failed to write dive_context.md: {}", e))?;
+
+    println!("✓ Dive session prepared");
+    println!("  Written to .wm/dive_context.md");
+    println!("  Intent: {}", intent_type);
+    if let Some(i) = intent {
+        println!("  Focus: {}", truncate(i, 60));
+    }
+
+    Ok(())
+}
+
+fn read_claude_md() -> Result<String, String> {
+    // Check current directory and parents for CLAUDE.md
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+
+    for ancestor in cwd.ancestors() {
+        let claude_path = ancestor.join("CLAUDE.md");
+        if claude_path.exists() {
+            let content = fs::read_to_string(&claude_path).map_err(|e| e.to_string())?;
+            // Return first meaningful section (skip to first ## or first 500 chars)
+            return Ok(summarize_claude_md(&content));
+        }
+    }
+
+    Err("CLAUDE.md not found".to_string())
+}
+
+fn summarize_claude_md(content: &str) -> String {
+    // Extract project overview - first section or first 500 chars
+    let lines: Vec<&str> = content.lines().collect();
+    let mut summary = Vec::new();
+    let mut in_overview = false;
+    let mut char_count = 0;
+
+    for line in lines {
+        if line.starts_with("# ") {
+            in_overview = true;
+            continue;
+        }
+        if line.starts_with("## ") && in_overview {
+            // Hit next section, stop
+            break;
+        }
+        if in_overview && char_count < 800 {
+            summary.push(line);
+            char_count += line.len();
+        }
+    }
+
+    if summary.is_empty() {
+        // Fallback: first 500 chars
+        content.chars().take(500).collect()
+    } else {
+        summary.join("\n").trim().to_string()
+    }
+}
+
+fn gather_git_context() -> Result<String, String> {
+    let mut info = Vec::new();
+
+    // Current branch
+    if let Ok(output) = Command::new("git")
+        .args(["branch", "--show-current"])
+        .output()
+        && output.status.success()
+    {
+        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !branch.is_empty() {
+            info.push(format!("- Branch: `{}`", branch));
+        }
+    }
+
+    // Status summary
+    if let Ok(output) = Command::new("git").args(["status", "--short"]).output()
+        && output.status.success()
+    {
+        let status = String::from_utf8_lossy(&output.stdout);
+        let line_count = status.lines().count();
+        if line_count > 0 {
+            info.push(format!("- {} uncommitted change(s)", line_count));
+        } else {
+            info.push("- Working tree clean".to_string());
+        }
+    }
+
+    // Recent commits
+    if let Ok(output) = Command::new("git")
+        .args(["log", "--oneline", "-3"])
+        .output()
+        && output.status.success()
+    {
+        let log = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !log.is_empty() {
+            info.push("\nRecent commits:".to_string());
+            for line in log.lines() {
+                info.push(format!("  {}", line));
+            }
+        }
+    }
+
+    if info.is_empty() {
+        Err("Not a git repository".to_string())
+    } else {
+        Ok(info.join("\n"))
+    }
+}
+
+fn get_workflow(intent_type: &str) -> String {
+    match intent_type {
+        "fix" => r#"1. Understand the issue
+2. Write failing test (if applicable)
+3. Implement fix
+4. Run tests
+5. Commit with clear message
+6. PR for review"#
+            .to_string(),
+
+        "plan" => r#"1. Review available context
+2. Identify options and trade-offs
+3. Draft plan with concrete steps
+4. Surface risks and dependencies
+5. Document decision rationale"#
+            .to_string(),
+
+        "review" => r#"1. Gather recent work artifacts
+2. Identify patterns, learnings, surprises
+3. Surface insights worth capturing
+4. Document findings"#
+            .to_string(),
+
+        "ship" => r#"1. Verify all tests pass
+2. Check constraints and guardrails
+3. Review changes for completeness
+4. Create PR with full context
+5. Address review feedback
+6. Deploy when approved"#
+            .to_string(),
+
+        _ => r#"1. Understand the problem space
+2. Read relevant code/docs
+3. Ask clarifying questions
+4. Document findings
+5. Identify next steps"#
+            .to_string(), // explore (default)
+    }
+}
+
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len])
+    }
+}
 
 // ============================================================================
 // Named prep management

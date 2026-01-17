@@ -119,6 +119,17 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum DiveCommands {
+    /// Prepare a dive session from local context and optional intent
+    Prep {
+        /// Intent for the session (GitHub issue URL, description, etc.)
+        #[arg(long)]
+        intent: Option<String>,
+
+        /// Intent type: fix, plan, review, explore, ship
+        #[arg(long, default_value = "explore")]
+        intent_type: String,
+    },
+
     /// List all dive preps (marks current with *)
     List,
 
@@ -215,6 +226,10 @@ fn main() -> ExitCode {
         }),
         Commands::Show { what, session_id } => show::run(&what, session_id.as_deref()),
         Commands::Dive { command } => match command {
+            DiveCommands::Prep {
+                intent,
+                intent_type,
+            } => dive::prep(intent.as_deref(), &intent_type),
             DiveCommands::List => dive::list(),
             DiveCommands::New { name } => dive::new(&name, None),
             DiveCommands::Switch { name } => dive::switch(&name),
