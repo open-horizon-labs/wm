@@ -449,6 +449,17 @@ They compose via shell calls with no shared state (Unix philosophy).
 - System reminders (CLAUDE.md content) should be stripped
 - If seeing explicit instructions, check transcript reader is up to date
 
+## Releases
+
+Releases are automated via GitHub Actions. To release a new version:
+
+1. Create and push a git tag: `git tag v0.3.5 && git push origin v0.3.5`
+2. Create a GitHub release from the tag
+
+This automatically publishes to:
+- **crates.io** — Rust CLI (`cargo install working-memory`)
+- **npm** — OpenCode plugin (`wm-opencode`)
+
 ## License
 
 Source-available. See [LICENSE.md](LICENSE.md) for details.

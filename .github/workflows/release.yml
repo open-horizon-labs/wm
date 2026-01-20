@@ -5,7 +5,7 @@ on:
     types: [published]
 
 jobs:
-  publish:
+  publish-crates:
     name: Publish to crates.io
     runs-on: ubuntu-latest
     steps:
@@ -16,3 +16,43 @@ jobs:
 
       - name: Publish to crates.io
         run: cargo publish --allow-dirty --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        working-directory: opencode-plugin
+        run: |
+          jq --arg v "${{ steps.version.outputs.VERSION }}" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+
+      - name: Install dependencies
+        working-directory: opencode-plugin
+        run: bun install
+
+      - name: Build
+        working-directory: opencode-plugin
+        run: bun run build
+
+      - name: Publish to npm
+        working-directory: opencode-plugin
+        run: npm publish --access public --provenance
