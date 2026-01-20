@@ -27,6 +27,10 @@ jobs:
   publish-npm:
     name: Publish to npm
     runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -59,6 +63,4 @@ jobs:
 
       - name: Publish to npm
         working-directory: opencode-plugin
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
