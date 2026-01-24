@@ -4,33 +4,12 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use crate::transcript::types::TranscriptEntry;
-
-/// Error type for transcript reading
-#[derive(Debug)]
-pub enum TranscriptError {
-    IoError(std::io::Error),
-}
-
-impl std::fmt::Display for TranscriptError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TranscriptError::IoError(e) => write!(f, "IO error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for TranscriptError {}
-
-impl From<std::io::Error> for TranscriptError {
-    fn from(e: std::io::Error) -> Self {
-        TranscriptError::IoError(e)
-    }
-}
+use crate::types::{strip_xml_tags, ReadError};
 
 /// Read and parse a transcript JSONL file
 ///
 /// Skips malformed lines rather than failing entirely
-pub fn read_transcript(path: &Path) -> Result<Vec<TranscriptEntry>, TranscriptError> {
+pub fn read_transcript(path: &Path) -> Result<Vec<TranscriptEntry>, ReadError> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     let mut entries = Vec::new();
@@ -135,33 +114,8 @@ pub fn get_messages_since<'a>(
 /// Strip ALL <system-reminder>...</system-reminder> blocks
 /// AIDEV-NOTE: System reminders contain CLAUDE.md content - already explicit instructions,
 /// not tacit knowledge. For extraction, we strip them entirely to avoid redundant capture.
-/// (sg keeps last one for evaluation context; wm doesn't need them at all)
 fn strip_system_reminders(text: &str) -> String {
-    const OPEN: &str = "<system-reminder>";
-    const CLOSE: &str = "</system-reminder>";
-
-    let mut result = String::with_capacity(text.len());
-    let mut search_start = 0;
-
-    while let Some(open_offset) = text[search_start..].find(OPEN) {
-        let open_pos = search_start + open_offset;
-        // Add text before this reminder
-        result.push_str(&text[search_start..open_pos]);
-
-        let after_open = open_pos + OPEN.len();
-        if let Some(close_offset) = text[after_open..].find(CLOSE) {
-            // Skip past the closing tag
-            search_start = after_open + close_offset + CLOSE.len();
-        } else {
-            // Unclosed tag - skip to end
-            search_start = text.len();
-            break;
-        }
-    }
-
-    // Add remaining text after last reminder
-    result.push_str(&text[search_start..]);
-    result.trim().to_string()
+    strip_xml_tags(text, "<system-reminder>", "</system-reminder>")
 }
 
 /// Extract key identifier from tool input (file path, command, pattern)

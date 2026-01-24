@@ -7,33 +7,12 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use crate::codex::types::CodexEntry;
-
-/// Error type for Codex transcript reading
-#[derive(Debug)]
-pub enum CodexReadError {
-    IoError(std::io::Error),
-}
-
-impl std::fmt::Display for CodexReadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CodexReadError::IoError(e) => write!(f, "IO error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for CodexReadError {}
-
-impl From<std::io::Error> for CodexReadError {
-    fn from(e: std::io::Error) -> Self {
-        CodexReadError::IoError(e)
-    }
-}
+use crate::types::{strip_xml_tags, ReadError};
 
 /// Read and parse a Codex session JSONL file
 ///
 /// Skips malformed lines rather than failing entirely (graceful failure).
-pub fn read_codex_session(path: &Path) -> Result<Vec<CodexEntry>, CodexReadError> {
+pub fn read_codex_session(path: &Path) -> Result<Vec<CodexEntry>, ReadError> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     let mut entries = Vec::new();
@@ -134,27 +113,7 @@ pub fn format_context(entries: &[CodexEntry]) -> String {
 /// Strip <environment_context>...</environment_context> blocks from user messages
 /// These contain cwd, sandbox settings, etc. - not relevant for knowledge extraction.
 fn strip_environment_context(text: &str) -> String {
-    const OPEN: &str = "<environment_context>";
-    const CLOSE: &str = "</environment_context>";
-
-    let mut result = String::with_capacity(text.len());
-    let mut search_start = 0;
-
-    while let Some(open_offset) = text[search_start..].find(OPEN) {
-        let open_pos = search_start + open_offset;
-        result.push_str(&text[search_start..open_pos]);
-
-        let after_open = open_pos + OPEN.len();
-        if let Some(close_offset) = text[after_open..].find(CLOSE) {
-            search_start = after_open + close_offset + CLOSE.len();
-        } else {
-            search_start = text.len();
-            break;
-        }
-    }
-
-    result.push_str(&text[search_start..]);
-    result.trim().to_string()
+    strip_xml_tags(text, "<environment_context>", "</environment_context>")
 }
 
 /// Summarize tool arguments for context

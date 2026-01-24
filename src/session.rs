@@ -6,26 +6,11 @@
 //! AIDEV-NOTE: This module is foundational for the distill command which needs to process
 //! all sessions in batch. Used by yz-yb9q (distill CLI).
 
-use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
 
+// Re-export SessionInfo for backward compatibility
+pub use crate::types::SessionInfo;
 use crate::types::system_time_to_datetime;
-
-/// Information about a discovered session transcript
-#[derive(Debug, Clone)]
-pub struct SessionInfo {
-    /// Session UUID (filename without .jsonl extension)
-    pub session_id: String,
-
-    /// Full path to the transcript file
-    pub transcript_path: PathBuf,
-
-    /// Last modification time
-    pub modified_at: DateTime<Utc>,
-
-    /// File size in bytes
-    pub size_bytes: u64,
-}
 
 /// Compute project-id from a project path
 /// Converts absolute path to Claude's project-id format: slashes become dashes

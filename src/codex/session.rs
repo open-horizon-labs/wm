@@ -4,32 +4,14 @@
 //! Unlike Claude Code (which uses project-id directories), Codex sessions embed
 //! the cwd in session_meta, so we need to read each file to filter by project.
 
-use chrono::{DateTime, Utc};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use crate::codex::types::CodexEntry;
+// Re-export CodexSessionInfo for backward compatibility
+pub use crate::types::CodexSessionInfo;
 use crate::types::system_time_to_datetime;
-
-/// Information about a discovered Codex session
-#[derive(Debug, Clone)]
-pub struct CodexSessionInfo {
-    /// Session ID (from session_meta or filename)
-    pub session_id: String,
-
-    /// Full path to the session JSONL file
-    pub session_path: PathBuf,
-
-    /// Working directory where the session ran
-    pub cwd: Option<String>,
-
-    /// Last modification time
-    pub modified_at: DateTime<Utc>,
-
-    /// File size in bytes
-    pub size_bytes: u64,
-}
 
 /// Get the Codex sessions root directory (~/.codex/sessions/)
 pub fn codex_sessions_dir() -> Option<PathBuf> {
