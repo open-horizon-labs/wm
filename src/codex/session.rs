@@ -9,9 +9,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use crate::codex::types::CodexEntry;
-// Re-export CodexSessionInfo for backward compatibility
-pub use crate::types::CodexSessionInfo;
-use crate::types::system_time_to_datetime;
+use crate::types::{system_time_to_datetime, CodexSessionInfo};
 
 /// Get the Codex sessions root directory (~/.codex/sessions/)
 pub fn codex_sessions_dir() -> Option<PathBuf> {

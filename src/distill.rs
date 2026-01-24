@@ -13,9 +13,10 @@
 use crate::codex;
 use crate::llm;
 use crate::oh;
-use crate::session::{self, SessionInfo};
+use crate::session;
 use crate::state;
 use crate::transcript::{format_context, read_transcript};
+use crate::types::{CodexSessionInfo, SessionInfo, SessionLike};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -116,23 +117,17 @@ fn run_claude_distill(options: DistillOptions) -> Result<(), String> {
 
     if options.dry_run {
         println!("\n[DRY RUN] Would process:");
-        let cache = load_extraction_cache();
+        let cache = load_cache("cache.json");
         for session in &sessions {
-            let status = if options.force {
-                "force"
-            } else if needs_extraction(session, &cache) {
-                "new/changed"
-            } else {
-                "cached"
-            };
-            print_session_info_with_status(session, status);
+            let status = extraction_status(session, &cache, options.force);
+            println!("  {} [{}]", session.display_info(), status);
         }
         return Ok(());
     }
 
     // Pass 1: Extract knowledge from each session
     println!("\n=== Pass 1: Extracting knowledge from Claude sessions ===\n");
-    let extractions = run_pass1(&sessions, options.force)?;
+    let extractions = run_pass1_generic(&sessions, options.force, "cache.json", extract_claude)?;
 
     run_pass2_and_push(extractions, options)
 }
@@ -166,23 +161,18 @@ fn run_codex_distill(options: DistillOptions) -> Result<(), String> {
 
     if options.dry_run {
         println!("\n[DRY RUN] Would process:");
-        let cache = load_codex_extraction_cache();
+        let cache = load_cache(CODEX_CACHE_FILE);
         for session in &sessions {
-            let status = if options.force {
-                "force"
-            } else if needs_codex_extraction(session, &cache) {
-                "new/changed"
-            } else {
-                "cached"
-            };
-            print_codex_session_info_with_status(session, status);
+            let status = extraction_status(session, &cache, options.force);
+            println!("  {} [{}]", session.display_info(), status);
         }
         return Ok(());
     }
 
     // Pass 1: Extract knowledge from each Codex session
     println!("\n=== Pass 1: Extracting knowledge from Codex sessions ===\n");
-    let extractions = run_codex_pass1(&sessions, options.force)?;
+    let extractions =
+        run_pass1_generic(&sessions, options.force, CODEX_CACHE_FILE, extract_codex)?;
 
     run_pass2_and_push(extractions, options)
 }
@@ -444,9 +434,46 @@ fn push_to_oh(context_id: &str, categorized: &CategorizationResult) -> Result<()
     Ok(())
 }
 
-/// Run Pass 1: extract knowledge from each session
-fn run_pass1(sessions: &[SessionInfo], force: bool) -> Result<Vec<SessionExtraction>, String> {
-    let mut cache = load_extraction_cache();
+// =============================================================================
+// Generic Pass 1 Implementation
+// =============================================================================
+
+/// Determine extraction status for a session
+fn extraction_status<S: SessionLike>(
+    session: &S,
+    cache: &HashMap<String, SessionExtraction>,
+    force: bool,
+) -> &'static str {
+    if force {
+        "force"
+    } else if needs_extraction(session, cache) {
+        "new/changed"
+    } else {
+        "cached"
+    }
+}
+
+/// Check if a session needs extraction (not in cache or file changed)
+fn needs_extraction<S: SessionLike>(
+    session: &S,
+    cache: &HashMap<String, SessionExtraction>,
+) -> bool {
+    match cache.get(session.session_id()) {
+        Some(cached) => cached.file_size_bytes != session.size_bytes(),
+        None => true,
+    }
+}
+
+/// Generic Pass 1: extract knowledge from sessions
+///
+/// Takes an extractor function that handles the specific session type.
+fn run_pass1_generic<S: SessionLike>(
+    sessions: &[S],
+    force: bool,
+    cache_file: &str,
+    extractor: fn(&S) -> Result<SessionExtraction, String>,
+) -> Result<Vec<SessionExtraction>, String> {
+    let mut cache = load_cache(cache_file);
     let mut results = Vec::new();
     let mut processed = 0;
     let mut skipped = 0;
@@ -456,17 +483,17 @@ fn run_pass1(sessions: &[SessionInfo], force: bool) -> Result<Vec<SessionExtract
         // Check if we can use cached extraction
         if !force
             && !needs_extraction(session, &cache)
-            && let Some(cached) = cache.get(&session.session_id)
+            && let Some(cached) = cache.get(session.session_id())
         {
-            println!("  {} [cached]", session.session_id);
+            println!("  {} [cached]", session.session_id());
             results.push(cached.clone());
             skipped += 1;
             continue;
         }
 
         // Extract from this session
-        println!("  {} extracting...", session.session_id);
-        match extract_from_session(session) {
+        println!("  {} extracting...", session.session_id());
+        match extractor(session) {
             Ok(extraction) => {
                 let status = if extraction.has_knowledge {
                     "✓ knowledge found"
@@ -475,25 +502,20 @@ fn run_pass1(sessions: &[SessionInfo], force: bool) -> Result<Vec<SessionExtract
                 };
                 println!("    {}", status);
 
-                // Cache the result
-                cache.insert(session.session_id.clone(), extraction.clone());
+                cache.insert(session.session_id().to_string(), extraction.clone());
                 results.push(extraction);
                 processed += 1;
             }
             Err(e) => {
                 eprintln!("    ✗ error: {}", e);
-                // Log to file for later debugging
-                log_extraction_error(&session.session_id, &e);
+                log_extraction_error(session.session_id(), &e);
                 failed += 1;
-                // Continue with other sessions
             }
         }
     }
 
-    // Save updated cache
-    save_extraction_cache(&cache)?;
+    save_cache(&cache, cache_file)?;
 
-    // Build summary message
     let mut summary_parts = vec![format!("{} session(s) processed", processed)];
     if skipped > 0 {
         summary_parts.push(format!("{} from cache", skipped));
@@ -510,29 +532,20 @@ fn run_pass1(sessions: &[SessionInfo], force: bool) -> Result<Vec<SessionExtract
     Ok(results)
 }
 
-/// Check if a session needs extraction (not in cache or file changed)
-fn needs_extraction(session: &SessionInfo, cache: &HashMap<String, SessionExtraction>) -> bool {
-    match cache.get(&session.session_id) {
-        Some(cached) => {
-            // Re-extract if file size changed (indicates new content)
-            cached.file_size_bytes != session.size_bytes
-        }
-        None => true,
-    }
-}
+// =============================================================================
+// Claude Code Extraction
+// =============================================================================
 
-/// Extract knowledge from a single session
-fn extract_from_session(session: &SessionInfo) -> Result<SessionExtraction, String> {
+/// Extract knowledge from a Claude Code session
+fn extract_claude(session: &SessionInfo) -> Result<SessionExtraction, String> {
     state::log(
         "distill",
         &format!("Extracting from session {}", session.session_id),
     );
 
-    // Read transcript
     let entries = read_transcript(&session.transcript_path)
         .map_err(|e| format!("Failed to read transcript: {}", e))?;
 
-    // Get all messages for this session
     // AIDEV-NOTE: Use .as_str() for proper Option<&str> comparison
     let session_messages: Vec<_> = entries
         .iter()
@@ -541,37 +554,68 @@ fn extract_from_session(session: &SessionInfo) -> Result<SessionExtraction, Stri
         .collect();
 
     if session_messages.is_empty() {
-        return Ok(SessionExtraction {
-            session_id: session.session_id.clone(),
-            extracted_at: Utc::now(),
-            has_knowledge: false,
-            content: String::new(),
-            file_size_bytes: session.size_bytes,
-        });
+        return Ok(empty_extraction(&session.session_id, session.size_bytes));
     }
 
-    // Format for LLM
     let formatted = format_context(&session_messages);
+    extract_from_formatted(&session.session_id, &formatted, session.size_bytes)
+}
 
-    if formatted.trim().is_empty() {
-        return Ok(SessionExtraction {
-            session_id: session.session_id.clone(),
-            extracted_at: Utc::now(),
-            has_knowledge: false,
-            content: String::new(),
-            file_size_bytes: session.size_bytes,
-        });
+// =============================================================================
+// Codex Extraction
+// =============================================================================
+
+/// Extract knowledge from a Codex session
+fn extract_codex(session: &CodexSessionInfo) -> Result<SessionExtraction, String> {
+    state::log(
+        "distill",
+        &format!("Extracting from Codex session {}", session.session_id),
+    );
+
+    let entries = codex::read_codex_session(&session.session_path)
+        .map_err(|e| format!("Failed to read Codex session: {}", e))?;
+
+    if !entries.iter().any(|e| e.is_relevant()) {
+        return Ok(empty_extraction(&session.session_id, session.size_bytes));
     }
 
-    // Call LLM for extraction
-    let result = call_extraction_llm(&formatted)?;
+    let formatted = codex::format_context(&entries);
+    extract_from_formatted(&session.session_id, &formatted, session.size_bytes)
+}
+
+// =============================================================================
+// Shared Extraction Helpers
+// =============================================================================
+
+/// Create an empty extraction result
+fn empty_extraction(session_id: &str, file_size_bytes: u64) -> SessionExtraction {
+    SessionExtraction {
+        session_id: session_id.to_string(),
+        extracted_at: Utc::now(),
+        has_knowledge: false,
+        content: String::new(),
+        file_size_bytes,
+    }
+}
+
+/// Extract from formatted transcript content
+fn extract_from_formatted(
+    session_id: &str,
+    formatted: &str,
+    file_size_bytes: u64,
+) -> Result<SessionExtraction, String> {
+    if formatted.trim().is_empty() {
+        return Ok(empty_extraction(session_id, file_size_bytes));
+    }
+
+    let result = call_extraction_llm(formatted)?;
 
     Ok(SessionExtraction {
-        session_id: session.session_id.clone(),
+        session_id: session_id.to_string(),
         extracted_at: Utc::now(),
         has_knowledge: result.has_knowledge,
         content: result.content,
-        file_size_bytes: session.size_bytes,
+        file_size_bytes,
     })
 }
 
@@ -644,8 +688,8 @@ fn accumulate_extractions(extractions: &[SessionExtraction]) -> String {
 }
 
 /// Load extraction cache from disk
-fn load_extraction_cache() -> HashMap<String, SessionExtraction> {
-    let cache_path = state::wm_path(DISTILL_DIR).join("cache.json");
+fn load_cache(filename: &str) -> HashMap<String, SessionExtraction> {
+    let cache_path = state::wm_path(DISTILL_DIR).join(filename);
 
     std::fs::read_to_string(&cache_path)
         .ok()
@@ -654,12 +698,12 @@ fn load_extraction_cache() -> HashMap<String, SessionExtraction> {
 }
 
 /// Save extraction cache to disk
-fn save_extraction_cache(cache: &HashMap<String, SessionExtraction>) -> Result<(), String> {
+fn save_cache(cache: &HashMap<String, SessionExtraction>, filename: &str) -> Result<(), String> {
     let distill_dir = state::wm_path(DISTILL_DIR);
     std::fs::create_dir_all(&distill_dir)
         .map_err(|e| format!("Failed to create distill directory: {}", e))?;
 
-    let cache_path = distill_dir.join("cache.json");
+    let cache_path = distill_dir.join(filename);
     let content = serde_json::to_string_pretty(cache)
         .map_err(|e| format!("Failed to serialize cache: {}", e))?;
 
@@ -711,201 +755,8 @@ fn log_extraction_error(session_id: &str, error: &str) {
         .and_then(|mut f| f.write_all(line.as_bytes()));
 }
 
-/// Print session info with status
-fn print_session_info_with_status(session: &SessionInfo, status: &str) {
-    let size_kb = session.size_bytes / 1024;
-    println!(
-        "  {} ({} KB, {}) [{}]",
-        session.session_id,
-        size_kb,
-        session.modified_at.format("%Y-%m-%d %H:%M"),
-        status
-    );
-}
-
-// =============================================================================
-// Codex session handling
-// =============================================================================
-
 /// Separate cache file for Codex extractions
 const CODEX_CACHE_FILE: &str = "codex_cache.json";
-
-/// Run Pass 1 for Codex sessions
-fn run_codex_pass1(
-    sessions: &[codex::CodexSessionInfo],
-    force: bool,
-) -> Result<Vec<SessionExtraction>, String> {
-    let mut cache = load_codex_extraction_cache();
-    let mut results = Vec::new();
-    let mut processed = 0;
-    let mut skipped = 0;
-    let mut failed = 0;
-
-    for session in sessions {
-        // Check if we can use cached extraction
-        if !force
-            && !needs_codex_extraction(session, &cache)
-            && let Some(cached) = cache.get(&session.session_id)
-        {
-            println!("  {} [cached]", session.session_id);
-            results.push(cached.clone());
-            skipped += 1;
-            continue;
-        }
-
-        // Extract from this session
-        println!("  {} extracting...", session.session_id);
-        match extract_from_codex_session(session) {
-            Ok(extraction) => {
-                let status = if extraction.has_knowledge {
-                    "✓ knowledge found"
-                } else {
-                    "○ no knowledge"
-                };
-                println!("    {}", status);
-
-                // Cache the result
-                cache.insert(session.session_id.clone(), extraction.clone());
-                results.push(extraction);
-                processed += 1;
-            }
-            Err(e) => {
-                eprintln!("    ✗ error: {}", e);
-                log_extraction_error(&session.session_id, &e);
-                failed += 1;
-            }
-        }
-    }
-
-    // Save updated cache
-    save_codex_extraction_cache(&cache)?;
-
-    // Build summary message
-    let mut summary_parts = vec![format!("{} session(s) processed", processed)];
-    if skipped > 0 {
-        summary_parts.push(format!("{} from cache", skipped));
-    }
-    if failed > 0 {
-        summary_parts.push(format!("{} failed", failed));
-    }
-    println!("\n{}", summary_parts.join(", "));
-
-    if failed > 0 {
-        println!("See .wm/{}/errors.log for failure details", DISTILL_DIR);
-    }
-
-    Ok(results)
-}
-
-/// Check if a Codex session needs extraction
-fn needs_codex_extraction(
-    session: &codex::CodexSessionInfo,
-    cache: &HashMap<String, SessionExtraction>,
-) -> bool {
-    match cache.get(&session.session_id) {
-        Some(cached) => cached.file_size_bytes != session.size_bytes,
-        None => true,
-    }
-}
-
-/// Extract knowledge from a single Codex session
-fn extract_from_codex_session(
-    session: &codex::CodexSessionInfo,
-) -> Result<SessionExtraction, String> {
-    state::log(
-        "distill",
-        &format!("Extracting from Codex session {}", session.session_id),
-    );
-
-    // Read session
-    let entries = codex::read_codex_session(&session.session_path)
-        .map_err(|e| format!("Failed to read Codex session: {}", e))?;
-
-    // Check if any relevant entries exist
-    if !entries.iter().any(|e| e.is_relevant()) {
-        return Ok(SessionExtraction {
-            session_id: session.session_id.clone(),
-            extracted_at: Utc::now(),
-            has_knowledge: false,
-            content: String::new(),
-            file_size_bytes: session.size_bytes,
-        });
-    }
-
-    // Format for LLM
-    let formatted = codex::format_context(&entries);
-
-    if formatted.trim().is_empty() {
-        return Ok(SessionExtraction {
-            session_id: session.session_id.clone(),
-            extracted_at: Utc::now(),
-            has_knowledge: false,
-            content: String::new(),
-            file_size_bytes: session.size_bytes,
-        });
-    }
-
-    // Call LLM for extraction (same prompt as Claude sessions)
-    let result = call_extraction_llm(&formatted)?;
-
-    Ok(SessionExtraction {
-        session_id: session.session_id.clone(),
-        extracted_at: Utc::now(),
-        has_knowledge: result.has_knowledge,
-        content: result.content,
-        file_size_bytes: session.size_bytes,
-    })
-}
-
-/// Load Codex extraction cache from disk
-fn load_codex_extraction_cache() -> HashMap<String, SessionExtraction> {
-    let cache_path = state::wm_path(DISTILL_DIR).join(CODEX_CACHE_FILE);
-
-    std::fs::read_to_string(&cache_path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
-}
-
-/// Save Codex extraction cache to disk
-fn save_codex_extraction_cache(cache: &HashMap<String, SessionExtraction>) -> Result<(), String> {
-    let distill_dir = state::wm_path(DISTILL_DIR);
-    std::fs::create_dir_all(&distill_dir)
-        .map_err(|e| format!("Failed to create distill directory: {}", e))?;
-
-    let cache_path = distill_dir.join(CODEX_CACHE_FILE);
-    let content = serde_json::to_string_pretty(cache)
-        .map_err(|e| format!("Failed to serialize Codex cache: {}", e))?;
-
-    std::fs::write(cache_path, content)
-        .map_err(|e| format!("Failed to write Codex cache: {}", e))?;
-
-    Ok(())
-}
-
-/// Print Codex session info with status
-fn print_codex_session_info_with_status(session: &codex::CodexSessionInfo, status: &str) {
-    use std::path::Path;
-
-    let size_kb = session.size_bytes / 1024;
-    let cwd_display = session
-        .cwd
-        .as_deref()
-        .and_then(|c| {
-            // Use Path API for cross-platform compatibility
-            Path::new(c).file_name().and_then(|n| n.to_str())
-        })
-        .unwrap_or("unknown");
-
-    println!(
-        "  {} ({} KB, {}, {}) [{}]",
-        session.session_id,
-        size_kb,
-        session.modified_at.format("%Y-%m-%d %H:%M"),
-        cwd_display,
-        status
-    );
-}
 
 // =============================================================================
 // Claude session handling

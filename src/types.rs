@@ -71,8 +71,21 @@ impl From<std::io::Error> for ReadError {
 }
 
 // =============================================================================
-// Session Types
+// Session Types and Traits
 // =============================================================================
+
+use std::path::Path;
+
+/// Common interface for session info (Claude Code and Codex)
+///
+/// Enables generic code in distill.rs to work with both session types.
+pub trait SessionLike {
+    fn session_id(&self) -> &str;
+    fn size_bytes(&self) -> u64;
+
+    /// Format session info for display (used in dry-run output)
+    fn display_info(&self) -> String;
+}
 
 /// Claude Code session info
 #[derive(Debug, Clone)]
@@ -83,6 +96,24 @@ pub struct SessionInfo {
     pub size_bytes: u64,
 }
 
+impl SessionLike for SessionInfo {
+    fn session_id(&self) -> &str {
+        &self.session_id
+    }
+    fn size_bytes(&self) -> u64 {
+        self.size_bytes
+    }
+    fn display_info(&self) -> String {
+        let size_kb = self.size_bytes / 1024;
+        format!(
+            "{} ({} KB, {})",
+            self.session_id,
+            size_kb,
+            self.modified_at.format("%Y-%m-%d %H:%M")
+        )
+    }
+}
+
 /// Codex session info
 #[derive(Debug, Clone)]
 pub struct CodexSessionInfo {
@@ -91,6 +122,30 @@ pub struct CodexSessionInfo {
     pub cwd: Option<String>,
     pub modified_at: DateTime<Utc>,
     pub size_bytes: u64,
+}
+
+impl SessionLike for CodexSessionInfo {
+    fn session_id(&self) -> &str {
+        &self.session_id
+    }
+    fn size_bytes(&self) -> u64 {
+        self.size_bytes
+    }
+    fn display_info(&self) -> String {
+        let size_kb = self.size_bytes / 1024;
+        let cwd_display = self
+            .cwd
+            .as_deref()
+            .and_then(|c| Path::new(c).file_name().and_then(|n| n.to_str()))
+            .unwrap_or("unknown");
+        format!(
+            "{} ({} KB, {}, {})",
+            self.session_id,
+            size_kb,
+            self.modified_at.format("%Y-%m-%d %H:%M"),
+            cwd_display
+        )
+    }
 }
 
 /// Hook-specific output for UserPromptSubmit hooks
